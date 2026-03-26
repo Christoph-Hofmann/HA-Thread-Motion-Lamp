@@ -114,6 +114,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug("Source entity created: %s — scheduling rename", entity_id)
 
         async def _delayed_rename() -> None:
+            _LOGGER.debug("Delayed rename triggered for %s", entity_id)
             device_registry = dr.async_get(hass)
             entity_registry = er.async_get(hass)
             entity_entry = entity_registry.async_get(entity_id)
