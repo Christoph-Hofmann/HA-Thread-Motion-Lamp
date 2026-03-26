@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from .const import (
     DOMAIN,
     MANUFACTURER_ID,
+    MODEL_NAME,
     MODEL_ID_MIN,
     MODEL_ID_MAX,
     ENTITY_RENAMES_FILE,
@@ -36,13 +37,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if device.manufacturer and str(device.manufacturer) == "Espressif":
             manufacturer_matches = True
 
-        # Check the model field
+        # Check the model field (numeric range or known model name)
         if device.model:
-            try:
-                if MODEL_ID_MIN <= int(device.model) <= MODEL_ID_MAX:
-                    model_matches = True
-            except (ValueError, TypeError):
-                pass
+            if device.model == MODEL_NAME:
+                model_matches = True
+            else:
+                try:
+                    if MODEL_ID_MIN <= int(device.model) <= MODEL_ID_MAX:
+                        model_matches = True
+                except (ValueError, TypeError):
+                    pass
 
         # Check Matter device identifiers (may encode both manufacturer and model)
         for identifier in device.identifiers:

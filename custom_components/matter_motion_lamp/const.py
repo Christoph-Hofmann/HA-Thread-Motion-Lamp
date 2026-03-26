@@ -6,6 +6,7 @@ DOMAIN = "matter_motion_lamp"
 MANUFACTURER_ID = 65521
 
 # Fixed model ID range for MotionLamp - these are constants and cannot be changed
+MODEL_NAME = "MotionLamp"
 MODEL_ID_MIN = 32768
 MODEL_ID_MAX = 32820
 
