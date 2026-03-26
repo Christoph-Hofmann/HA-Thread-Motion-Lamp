@@ -1,0 +1,9 @@
+{
+  "name": "Matter Thread Motion Lamp",
+  "render_readme": true,
+  "domains": ["matter_motion_lamp"],
+  "homeassistant": "2024.1.0",
+  "iot_class": "Local Push",
+  "zip_release": false,
+  "filename": "matter_motion_lamp.zip"
+}

@@ -1,0 +1,8 @@
+[
+  {
+    "source_entity_id": "switch.motionlamp_schalter_5_3",
+    "desired_entity_id": "switch.power_on_motion",
+    "desired_name": "Power on Motion"
+  }
+]
+

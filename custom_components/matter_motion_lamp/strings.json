@@ -1,0 +1,11 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Matter Motion Lamp",
+        "description": "Click Submit to enable the Matter Motion Lamp integration. It will automatically detect and rename your Espressif MotionLamp device entities. No configuration is required."
+      }
+    }
+  }
+}
+
