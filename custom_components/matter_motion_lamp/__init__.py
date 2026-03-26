@@ -53,10 +53,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if len(identifier) >= 2:
                 domain, value = identifier
                 if domain == "matter" or "matter" in str(domain).lower():
+                    _LOGGER.debug("Matter identifier for %s: domain=%s, value=%s", device.name, domain, value)
                     if str(MANUFACTURER_ID) in str(value):
                         manufacturer_matches = True
                         try:
-                            if MODEL_ID_MIN <= int(str(value).split("_")[-1]) <= MODEL_ID_MAX:
+                            model_id = int(str(value).split("_")[-1])
+                            _LOGGER.debug("Parsed manufacturer_id=%s, model_id=%s", MANUFACTURER_ID, model_id)
+                            if MODEL_ID_MIN <= model_id <= MODEL_ID_MAX:
                                 model_matches = True
                         except (ValueError, IndexError):
                             pass
