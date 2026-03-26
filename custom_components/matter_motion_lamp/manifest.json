@@ -1,11 +1,11 @@
 {
   "domain": "matter_motion_lamp",
   "name": "Matter Motion Lamp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "requirements": [],
   "dependencies": [],
   "after_dependencies": ["matter"],
-  "codeowners": ["@yourusername"],
+  "codeowners": ["@Christoph-Hofmann"],
   "config_flow": true,
   "iot_class": "local_push"
 }

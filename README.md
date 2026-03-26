@@ -16,7 +16,7 @@ Automatically rename Matter device entities based on manufacturer and model IDs.
 ### HACS (Recommended)
 1. Add this repository as a custom repository in HACS:
    - Go to HACS → Integrations → Three dots → Custom repositories
-   - URL: `https://github.com/yourusername/matter-renamer`
+   - URL: `https://github.com/Christoph-Hofmann/HA-Thread-Motion-Lamp`
    - Category: Integration
 2. Click "Install"
 
