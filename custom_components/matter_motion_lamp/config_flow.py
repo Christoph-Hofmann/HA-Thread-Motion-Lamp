@@ -8,6 +8,7 @@ class MatterMotionLampConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Matter Motion Lamp."""
 
     VERSION = 1
+    single_config_entry = True
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step — no user input needed, all values are constants."""
