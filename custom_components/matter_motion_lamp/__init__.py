@@ -27,6 +27,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def check_and_rename_device(device, entity_registry) -> None:
         """Check if device matches Matter IDs and rename if needed."""
+        _LOGGER.debug("Checking device: %s (manufacturer: %s, model: %s)",
+                      device.name, device.manufacturer, device.model)
         manufacturer_matches = False
         model_matches = False
 
@@ -89,27 +91,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except ValueError as err:
                 _LOGGER.error("Failed to rename entity %s: %s", source_entity_id, err)
 
-    async def async_device_registry_updated(event) -> None:
-        """Handle device registry updated events."""
+    _source_entity_ids = {r["source_entity_id"] for r in _ENTITY_RENAMES}
+
+    async def async_entity_registry_updated(event) -> None:
+        """Handle entity registry updated events — catches new entities as they are created."""
+        if event.data.get("action") != "create":
+            return
+        entity_id = event.data.get("entity_id")
+        if entity_id not in _source_entity_ids:
+            return
+        _LOGGER.debug("Source entity created: %s — checking device", entity_id)
         device_registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
-        device_id = event.data.get("device_id")
-        if device_id:
-            device = device_registry.async_get(device_id)
-            if device:
-                await check_and_rename_device(device, entity_registry)
+        entity_entry = entity_registry.async_get(entity_id)
+        if entity_entry is None:
+            return
+        device = device_registry.async_get(entity_entry.device_id)
+        if device:
+            await check_and_rename_device(device, entity_registry)
 
     async def async_startup(_event=None) -> None:
-        """Scan all existing devices."""
+        """Scan all existing devices on startup."""
         _LOGGER.info("Matter Motion Lamp scanning existing devices...")
         device_registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
         for device in device_registry.devices.values():
             await check_and_rename_device(device, entity_registry)
 
-    # Register device registry listener; automatically unsubscribed on unload
+    # Listen for new entities being registered (handles newly added devices)
     entry.async_on_unload(
-        hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, async_device_registry_updated)
+        hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, async_entity_registry_updated)
     )
 
     # Run immediately if HA is already running, otherwise wait for startup
