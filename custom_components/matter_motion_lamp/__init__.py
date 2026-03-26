@@ -36,15 +36,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Check the manufacturer field
         if device.manufacturer and str(device.manufacturer) == "Espressif":
             manufacturer_matches = True
+            _LOGGER.debug("Manufacturer matched by name: %s (expected manufacturer_id: %s)", device.manufacturer, MANUFACTURER_ID)
 
         # Check the model field (numeric range or known model name)
         if device.model:
             if device.model == MODEL_NAME:
                 model_matches = True
+                _LOGGER.debug("Model matched by name: %s (model_id range: %s-%s)", device.model, MODEL_ID_MIN, MODEL_ID_MAX)
             else:
                 try:
-                    if MODEL_ID_MIN <= int(device.model) <= MODEL_ID_MAX:
+                    model_id = int(device.model)
+                    if MODEL_ID_MIN <= model_id <= MODEL_ID_MAX:
                         model_matches = True
+                        _LOGGER.debug("Model matched by id: %s", model_id)
                 except (ValueError, TypeError):
                     pass
 
@@ -107,15 +111,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entity_id = event.data.get("entity_id")
         if entity_id not in _source_entity_ids:
             return
-        _LOGGER.debug("Source entity created: %s — checking device", entity_id)
-        device_registry = dr.async_get(hass)
-        entity_registry = er.async_get(hass)
-        entity_entry = entity_registry.async_get(entity_id)
-        if entity_entry is None:
-            return
-        device = device_registry.async_get(entity_entry.device_id)
-        if device:
-            await check_and_rename_device(device, entity_registry)
+        _LOGGER.debug("Source entity created: %s — scheduling rename", entity_id)
+
+        async def _delayed_rename() -> None:
+            device_registry = dr.async_get(hass)
+            entity_registry = er.async_get(hass)
+            entity_entry = entity_registry.async_get(entity_id)
+            if entity_entry is None:
+                return
+            device = device_registry.async_get(entity_entry.device_id)
+            if device:
+                await check_and_rename_device(device, entity_registry)
+
+        hass.async_call_later(5, lambda _: hass.async_create_task(_delayed_rename()))
 
     async def async_startup(_event=None) -> None:
         """Scan all existing devices on startup."""

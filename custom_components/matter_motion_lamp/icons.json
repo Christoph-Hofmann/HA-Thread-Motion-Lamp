@@ -1,4 +1,6 @@
 {
-  "integration_icon": "mdi:lightbulb-on"
+  "integration": {
+    "icon": "mdi:lightbulb-on"
+  }
 }
 
