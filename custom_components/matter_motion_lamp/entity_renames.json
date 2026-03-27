@@ -1,8 +1,11 @@
 [
   {
-    "source_entity_id": "switch.motionlamp_schalter_5_3",
-    "desired_entity_id": "switch.power_on_motion",
+    "source_entity_id": "select.motionlamp_wiedereinschaltverhalten_5_3",
+    "desired_entity_id": "select.power_on_motion",
     "desired_name": "Power on Motion"
+  },
+  {
+    "source_entity_id": "switch.motionlamp_schalter_5_3",
+    "action": "delete"
   }
 ]
-

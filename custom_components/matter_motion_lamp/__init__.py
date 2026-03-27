@@ -75,11 +75,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.info("Processing target device: %s (ID: %s)", device.name, device.id)
 
-        # Iterate over all configured entity renames
-        for rename in _ENTITY_RENAMES:
-            source_entity_id = rename["source_entity_id"]
-            desired_entity_id = rename["desired_entity_id"]
-            desired_name = rename["desired_name"]
+        # Iterate over all configured entity actions
+        for entry in _ENTITY_RENAMES:
+            source_entity_id = entry["source_entity_id"]
+            action = entry.get("action", "rename")
 
             entity_entry = entity_registry.async_get(source_entity_id)
             if entity_entry is None or entity_entry.device_id != device.id:
@@ -88,20 +87,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 continue
 
-            if entity_entry.entity_id == desired_entity_id:
-                _LOGGER.debug("Entity %s already renamed, skipping", desired_entity_id)
-                continue
+            if action == "delete":
+                _LOGGER.info("Deleting entity %s", source_entity_id)
+                entity_registry.async_remove(source_entity_id)
+                _LOGGER.info("Successfully deleted %s", source_entity_id)
+            else:
+                desired_entity_id = entry["desired_entity_id"]
+                desired_name = entry["desired_name"]
 
-            _LOGGER.info("Renaming entity %s to %s", source_entity_id, desired_entity_id)
-            try:
-                entity_registry.async_update_entity(
-                    entity_entry.entity_id,
-                    new_entity_id=desired_entity_id,
-                    name=desired_name,
-                )
-                _LOGGER.info("Successfully renamed to %s", desired_entity_id)
-            except ValueError as err:
-                _LOGGER.error("Failed to rename entity %s: %s", source_entity_id, err)
+                if entity_entry.entity_id == desired_entity_id:
+                    _LOGGER.debug("Entity %s already renamed, skipping", desired_entity_id)
+                    continue
+
+                _LOGGER.info("Renaming entity %s to %s", source_entity_id, desired_entity_id)
+                try:
+                    entity_registry.async_update_entity(
+                        entity_entry.entity_id,
+                        new_entity_id=desired_entity_id,
+                        name=desired_name,
+                    )
+                    _LOGGER.info("Successfully renamed to %s", desired_entity_id)
+                except ValueError as err:
+                    _LOGGER.error("Failed to rename entity %s: %s", source_entity_id, err)
 
     _source_entity_ids = {r["source_entity_id"] for r in _ENTITY_RENAMES}
 
