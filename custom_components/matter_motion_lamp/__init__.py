@@ -1,5 +1,6 @@
 """Matter Motion Lamp Component."""
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -114,6 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug("Source entity created: %s — scheduling rename", entity_id)
 
         async def _delayed_rename() -> None:
+            await asyncio.sleep(5)
             _LOGGER.debug("Delayed rename triggered for %s", entity_id)
             device_registry = dr.async_get(hass)
             entity_registry = er.async_get(hass)
@@ -124,7 +126,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if device:
                 await check_and_rename_device(device, entity_registry)
 
-        hass.async_call_later(5, lambda _: hass.async_create_task(_delayed_rename()))
+        hass.async_create_task(_delayed_rename())
 
     async def async_startup(_event=None) -> None:
         """Scan all existing devices on startup."""
