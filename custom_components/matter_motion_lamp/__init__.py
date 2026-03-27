@@ -156,10 +156,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, async_startup)
         )
 
+    await hass.config_entries.async_forward_entry_setups(entry, ["select"])
+
     _LOGGER.info("Matter Motion Lamp component loaded")
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    return True
+    return await hass.config_entries.async_unload_platforms(entry, ["select"])
