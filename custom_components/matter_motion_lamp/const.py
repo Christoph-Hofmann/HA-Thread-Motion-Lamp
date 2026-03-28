@@ -13,3 +13,6 @@ MODEL_ID_MAX = 32820
 # JSON file containing the list of entity renames
 ENTITY_RENAMES_FILE = "entity_renames.json"
 
+# JSON file containing the list of action select entities
+ACTIONS_FILE = "actions.json"
+

@@ -1,0 +1,16 @@
+[
+  {
+    "entity_id": "select.motionlamp_actions",
+    "name": "MotionLamp Actions",
+    "options": [
+      {
+        "name": "Blink",
+        "command": ["~/connectedhomeip/out/host/chip-tool", "identify", "trigger-effect", "35", "1", "0x00", "0x00"]
+      },
+      {
+        "name": "Flash",
+        "command": ["~/connectedhomeip/out/host/chip-tool", "identify", "trigger-effect", "35", "1", "0x0B", "0x00"]
+      }
+    ]
+  }
+]
