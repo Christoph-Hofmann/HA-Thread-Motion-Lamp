@@ -101,6 +101,7 @@ class MatterUptimeSensor(SensorEntity):
         attribute_key = f"{ENDPOINT_ID}/{CLUSTER_ID}/{ATTRIBUTE_ID}"
         try:
             async with websockets.connect(MATTER_SERVER_URL) as websocket:
+                _LOGGER.debug("Sending start_listening to %s", MATTER_SERVER_URL)
                 await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
 
                 response = None
