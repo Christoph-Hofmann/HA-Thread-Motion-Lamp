@@ -152,9 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if hass.is_running:
         await async_startup()
     else:
-        entry.async_on_unload(
-            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, async_startup)
-        )
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, async_startup)
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 

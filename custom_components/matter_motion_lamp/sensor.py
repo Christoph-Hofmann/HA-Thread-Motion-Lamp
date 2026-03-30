@@ -15,6 +15,8 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -38,7 +40,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Matter Uptime sensor."""
-    entity = MatterUptimeSensor(entry)
+    device_info = None
+    for device in dr.async_get(hass).devices.values():
+        if device.manufacturer == "Espressif" and device.model == "MotionLamp":
+            device_info = DeviceInfo(identifiers=device.identifiers)
+            break
+
+    entity = MatterUptimeSensor(entry, device_info)
     async_add_entities([entity], update_before_add=True)
 
     # Schedule periodic updates
@@ -64,10 +72,10 @@ class MatterUptimeSensor(SensorEntity):
         native_unit_of_measurement=UnitOfTime.SECONDS,
     )
 
-    def __init__(self, entry: ConfigEntry) -> None:
+    def __init__(self, entry: ConfigEntry, device_info: DeviceInfo | None) -> None:
         """Initialize the sensor."""
         self._attr_unique_id = f"matter_uptime_{NODE_ID}_{ENDPOINT_ID}_{CLUSTER_ID}_{ATTRIBUTE_ID}"
-        self._attr_device_info = None
+        self._attr_device_info = device_info
         self._state = None
         self._available = False
 
