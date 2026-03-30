@@ -103,9 +103,14 @@ class MatterUptimeSensor(SensorEntity):
             async with websockets.connect(MATTER_SERVER_URL) as websocket:
                 await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
 
-                raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                response = json.loads(raw)
-                _LOGGER.debug("Received start_listening response (message_id=%s)", response.get("message_id"))
+                response = None
+                while True:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    msg = json.loads(raw)
+                    _LOGGER.debug("Received message (message_id=%s)", msg.get("message_id"))
+                    if msg.get("message_id") == "1":
+                        response = msg
+                        break
 
                 nodes = response.get("result", [])
                 for node in nodes:
