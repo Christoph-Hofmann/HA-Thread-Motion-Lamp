@@ -29,7 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def check_and_rename_device(device, entity_registry) -> None:
         """Check if device matches Matter IDs and rename if needed."""
-        _LOGGER.debug("Checking device: %s (manufacturer: %s, model: %s, identifiers: %s)",
+        _LOGGER.debug("Checking device#1: %s (manufacturer: %s, model: %s, identifiers: %s)",
                       device.name, device.manufacturer, device.model, device.identifiers)
         manufacturer_matches = False
         model_matches = False
