@@ -13,6 +13,13 @@ MODEL_ID_MAX = 32820
 # JSON file containing the list of entity renames
 ENTITY_RENAMES_FILE = "entity_renames.json"
 
-# JSON file containing the list of action select entities
-ACTIONS_FILE = "actions.json"
+MATTER_SERVER_URL = "ws://localhost:5580/ws"
 
+# Your device details
+NODE_ID = 61
+ENDPOINT_ID = 0
+CLUSTER_ID = 51  # Basic Information Cluster
+ATTRIBUTE_ID = 2  # UpTime Attribute
+
+# Update interval in seconds
+SCAN_INTERVAL = 300  # 5 minutes

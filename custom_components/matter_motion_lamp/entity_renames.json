@@ -1,11 +1,8 @@
 [
   {
     "source_entity_id": "select.motionlamp_wiedereinschaltverhalten_5_3",
-    "desired_entity_id": "select.power_on_motion_raw",
-    "desired_name": "Power on Motion Raw",
-    "filtered_entity_id": "select.power_on_motion",
-    "filtered_name": "Power on Motion",
-    "filtered_options": ["On", "Off"]
+    "desired_entity_id": "select.power_on_motion",
+    "desired_name": "Power on Motion"
   },
   {
     "source_entity_id": "switch.motionlamp_schalter_5_3",
