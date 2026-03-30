@@ -15,8 +15,6 @@ ENTITY_RENAMES_FILE = "entity_renames.json"
 
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
-# Your device details
-NODE_ID = 61
 ENDPOINT_ID = 0
 CLUSTER_ID = 51  # Basic Information Cluster
 ATTRIBUTE_ID = 2  # UpTime Attribute
