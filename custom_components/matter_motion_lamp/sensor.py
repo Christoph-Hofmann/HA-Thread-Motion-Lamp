@@ -25,8 +25,10 @@ from .const import (
     ENDPOINT_ID,
     CLUSTER_ID,
     ATTRIBUTE_ID,
-    SCAN_INTERVAL,
+    SCAN_INTERVAL as _SCAN_INTERVAL_SECONDS,
 )
+
+SCAN_INTERVAL = timedelta(seconds=_SCAN_INTERVAL_SECONDS)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ async def async_setup_entry(
         async_track_time_interval(
             hass,
             async_update,
-            timedelta(seconds=SCAN_INTERVAL),
+            SCAN_INTERVAL,
         )
     )
 
