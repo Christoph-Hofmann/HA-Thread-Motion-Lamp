@@ -13,7 +13,7 @@ MODEL_ID_MAX = 32820
 # JSON file containing the list of entity renames
 ENTITY_RENAMES_FILE = "entity_renames.json"
 
-MATTER_SERVER_URL = "ws://localhost:5580/ws"
+MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
 # Your device details
 NODE_ID = 61
