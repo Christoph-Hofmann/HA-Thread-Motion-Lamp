@@ -98,66 +98,33 @@ class MatterUptimeSensor(SensorEntity):
 
     async def _read_matter_attribute(self) -> int | None:
         """Read attribute from Matter Server via WebSocket."""
+        attribute_key = f"{ENDPOINT_ID}/{CLUSTER_ID}/{ATTRIBUTE_ID}"
         try:
-            # Connect to Matter Server
             async with websockets.connect(MATTER_SERVER_URL) as websocket:
-                # First, start listening to get node information
-                start_listening = {
-                    "message_id": "1",
-                    "command": "start_listening"
-                }
-                await websocket.send(json.dumps(start_listening))
+                await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
 
-                # Wait for the start_listening response before proceeding
-                await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                response = json.loads(raw)
+                _LOGGER.debug("Received start_listening response (message_id=%s)", response.get("message_id"))
 
-                # Read the specific attribute
-                read_command = {
-                    "message_id": "2",
-                    "command": "read_attribute",
-                    "args": {
-                        "node_id": NODE_ID,
-                        "endpoint_id": ENDPOINT_ID,
-                        "cluster_id": CLUSTER_ID,
-                        "attribute_id": ATTRIBUTE_ID
-                    }
-                }
-                
-                _LOGGER.debug(f"Sending command: {read_command}")
-                await websocket.send(json.dumps(read_command))
-                
-                # Receive response
-                response = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                response_data = json.loads(response)
-                _LOGGER.debug(f"Received response: {response_data}")
-                
-                # Parse the response to extract the attribute value
-                if "result" in response_data:
-                    result = response_data["result"]
-                    # The attribute value might be nested in different ways
-                    if isinstance(result, dict):
-                        if "value" in result:
-                            return result["value"]
-                        elif "attribute_value" in result:
-                            return result["attribute_value"]
-                        elif "UpTime" in result:
-                            return result["UpTime"]
-                    elif isinstance(result, (int, float)):
-                        return int(result)
-                
-                # Alternative: check for attribute update events
-                if "event" in response_data and response_data["event"] == "attribute_updated":
-                    if "value" in response_data:
-                        return response_data["value"]
-                        
+                nodes = response.get("result", [])
+                for node in nodes:
+                    if node.get("node_id") == NODE_ID:
+                        value = node.get("attributes", {}).get(attribute_key)
+                        if value is not None:
+                            return int(value)
+                        _LOGGER.warning("Attribute %s not found for node %s", attribute_key, NODE_ID)
+                        return None
+
+                _LOGGER.warning("Node %s not found in start_listening response", NODE_ID)
                 return None
-                
+
         except websockets.exceptions.WebSocketException as e:
-            _LOGGER.error(f"WebSocket connection error: {e}")
+            _LOGGER.error("WebSocket connection error: %s", e)
             return None
         except asyncio.TimeoutError:
             _LOGGER.error("Timeout waiting for Matter Server response")
             return None
         except json.JSONDecodeError as e:
-            _LOGGER.error(f"Failed to parse JSON response: {e}")
+            _LOGGER.error("Failed to parse JSON response: %s", e)
             return None
