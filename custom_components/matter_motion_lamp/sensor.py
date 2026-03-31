@@ -70,28 +70,49 @@ async def async_setup_entry(
             continue
 
         device_info = DeviceInfo(identifiers=device.identifiers)
-        entities.append(MatterUptimeSensor(node_id, device_info))
+        for unit_key, unit, converter in _UPTIME_UNITS:
+            entities.append(MatterUptimeSensor(node_id, device_info, unit_key, unit, converter))
 
     async_add_entities(entities, update_before_add=True)
 
     async def async_update(event_time):
+        # Group entities by node_id and fetch once per node
+        by_node: dict[int, list[MatterUptimeSensor]] = {}
         for entity in entities:
-            await entity.async_update()
+            by_node.setdefault(entity._node_id, []).append(entity)
+        for node_id, node_entities in by_node.items():
+            seconds = await node_entities[0]._read_uptime_seconds()
+            for entity in node_entities:
+                if seconds is not None:
+                    entity._set_uptime_seconds(seconds)
+                    entity.async_write_ha_state()
+                else:
+                    entity._available = False
+                    entity.async_write_ha_state()
 
     entry.async_on_unload(
         async_track_time_interval(hass, async_update, SCAN_INTERVAL)
     )
 
 
-class MatterUptimeSensor(SensorEntity):
-    """Representation of a Matter Uptime sensor."""
+_UPTIME_UNITS = [
+    ("days",    UnitOfTime.DAYS,    lambda s: s // 86400),
+    ("hours",   UnitOfTime.HOURS,   lambda s: (s % 86400) // 3600),
+    ("minutes", UnitOfTime.MINUTES, lambda s: (s % 3600) // 60),
+]
 
-    def __init__(self, node_id: int, device_info: DeviceInfo) -> None:
+
+class MatterUptimeSensor(SensorEntity):
+    """One component (days / hours / minutes) of a Matter device's uptime."""
+
+    def __init__(self, node_id: int, device_info: DeviceInfo, unit_key: str,
+                 unit: str, converter) -> None:
         self._node_id = node_id
-        self._attr_unique_id = f"matter_uptime_{node_id}_{ENDPOINT_ID}_{CLUSTER_ID}_{ATTRIBUTE_ID}"
-        self._attr_name = "UpTime"
+        self._converter = converter
+        self._attr_unique_id = f"matter_uptime_{node_id}_{unit_key}"
+        self._attr_name = f"UpTime {unit_key.capitalize()}"
         self._attr_device_class = SensorDeviceClass.DURATION
-        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_native_unit_of_measurement = unit
         self._attr_device_info = device_info
         self._state = None
         self._available = False
@@ -104,13 +125,16 @@ class MatterUptimeSensor(SensorEntity):
     def available(self):
         return self._available
 
+    def _set_uptime_seconds(self, seconds: int) -> None:
+        self._state = self._converter(seconds)
+        self._available = True
+
     async def async_update(self) -> None:
         try:
-            value = await self._read_uptime()
-            if value is not None:
-                self._state = value
-                self._available = True
-                _LOGGER.debug("Node %s uptime: %s seconds", self._node_id, value)
+            seconds = await self._read_uptime_seconds()
+            if seconds is not None:
+                self._set_uptime_seconds(seconds)
+                _LOGGER.debug("Node %s uptime: %s seconds", self._node_id, seconds)
             else:
                 self._available = False
                 _LOGGER.warning("Node %s: uptime not returned", self._node_id)
@@ -118,7 +142,7 @@ class MatterUptimeSensor(SensorEntity):
             self._available = False
             _LOGGER.error("Node %s: error reading uptime: %s", self._node_id, e)
 
-    async def _read_uptime(self) -> int | None:
+    async def _read_uptime_seconds(self) -> int | None:
         attribute_key = f"{ENDPOINT_ID}/{CLUSTER_ID}/{ATTRIBUTE_ID}"
         try:
             async with websockets.connect(MATTER_SERVER_URL) as websocket:
