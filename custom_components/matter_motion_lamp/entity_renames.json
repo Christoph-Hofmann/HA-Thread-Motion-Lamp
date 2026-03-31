@@ -9,17 +9,17 @@
     "action": "delete"
   },
   {
-    "source_entity_id": "switch.motionlamp_belegung_4_3",
+    "source_entity_id": "binary_sensor.motionlamp_belegung_2",
     "action": "delete"
   },
   {
-    "source_entity_id": "switch.motionlamp_belegung_4_1",
-    "desired_entity_id": "switch.motion_1",
+    "source_entity_id": "binary_sensor.motionlamp_belegung_2",
+    "desired_entity_id": "binary_sensor.motion_1",
     "desired_name": "Motion Sensor 1"
   },
   {
-    "source_entity_id": "switch.motionlamp_belegung_4_2",
-    "desired_entity_id": "switch.motion_2",
+    "source_entity_id": "binary_sensor.motionlamp_belegung_3",
+    "desired_entity_id": "binary_sensor.motion_2",
     "desired_name": "Motion Sensor 2"
   }  
 ]
