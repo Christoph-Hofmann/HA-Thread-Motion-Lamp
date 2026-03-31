@@ -36,7 +36,7 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
     _LOGGER.info("Found %d update file(s): %s", len(filenames), filenames)
 
     for filename in filenames:
-        url = UPDATE_SERVER_URL.rstrip("/") + "/" + filename.lstrip("/")
+        url = UPDATE_SERVER_URL.rstrip("/") + "/" + Path(filename).name
         try:
             async with session.get(url) as resp:
                 resp.raise_for_status()
