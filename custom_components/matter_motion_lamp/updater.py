@@ -1,5 +1,6 @@
 """Fetch JSON update files from the update server and write via Supervisor API."""
 
+import base64
 import logging
 import os
 import re
@@ -22,40 +23,37 @@ def _supervisor_headers() -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _supervisor_mkdir(session, rel_path: str) -> None:
-    """Ensure directory exists via Supervisor FS API."""
-    url = f"{_SUPERVISOR_API}/fs/mkdir/{rel_path}"
+async def _supervisor_mkdir(session, path: str) -> None:
+    """Create directory on host via Supervisor FS API."""
+    url = f"{_SUPERVISOR_API}/fs/mkdir"
     try:
-        async with session.post(url, headers=_supervisor_headers()) as resp:
-            if resp.status in (200, 201, 409):
-                _LOGGER.debug("Directory ready: /%s (status %s)", rel_path, resp.status)
+        async with session.post(url, headers=_supervisor_headers(), json={"path": path}) as resp:
+            if resp.status in (200, 201):
+                _LOGGER.debug("Directory ready: %s", path)
             else:
                 body = await resp.text()
-                _LOGGER.warning("mkdir /%s returned %s: %s", rel_path, resp.status, body[:200])
+                _LOGGER.warning("mkdir %s returned %s: %s", path, resp.status, body[:200])
     except Exception as e:
-        _LOGGER.warning("mkdir /%s failed: %s", rel_path, e)
+        _LOGGER.warning("mkdir %s failed: %s", path, e)
 
 
-async def _supervisor_write_file(session, rel_path: str, content: bytes) -> bool:
-    """Write content to host path via Supervisor FS API.
-
-    rel_path has no leading slash, must be under an allowed root:
-    share/, homeassistant/, ssl/, backup/, media/
-    """
-    url = f"{_SUPERVISOR_API}/fs/content/{rel_path}"
-    headers = {**_supervisor_headers(), "Content-Type": "application/octet-stream"}
+async def _supervisor_write_file(session, path: str, content: bytes) -> bool:
+    """Write file on host via Supervisor FS API (POST /fs/file, base64 content)."""
+    url = f"{_SUPERVISOR_API}/fs/file"
+    body = {
+        "path": path,
+        "content": base64.b64encode(content).decode(),
+    }
     try:
-        async with session.put(url, data=content, headers=headers) as resp:
+        async with session.post(url, headers=_supervisor_headers(), json=body) as resp:
             if resp.status in (200, 201):
-                _LOGGER.info("Saved %d bytes → /%s", len(content), rel_path)
+                _LOGGER.info("Saved %d bytes → %s", len(content), path)
                 return True
-            body = await resp.text()
-            _LOGGER.error(
-                "Supervisor API returned %s for /%s: %s", resp.status, rel_path, body[:200]
-            )
+            text = await resp.text()
+            _LOGGER.error("Supervisor /fs/file returned %s for %s: %s", resp.status, path, text[:200])
             return False
     except Exception as e:
-        _LOGGER.error("Supervisor API error writing /%s: %s", rel_path, e)
+        _LOGGER.error("Supervisor /fs/file error for %s: %s", path, e)
         return False
 
 
@@ -79,11 +77,7 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
 
     _LOGGER.info("Found %d update file(s): %s", len(filenames), filenames)
 
-    # UPDATE_TARGET_DIR = /share/matter_motion_lamp/updates
-    # The Supervisor FS API only allows access under: share/, homeassistant/, ssl/, backup/, media/
-    # /addon_configs/ is NOT accessible via the FS API.
-    target_rel = UPDATE_TARGET_DIR.lstrip("/")
-    await _supervisor_mkdir(session, target_rel)
+    await _supervisor_mkdir(session, UPDATE_TARGET_DIR)
 
     for filename in filenames:
         name = Path(filename).name
@@ -96,4 +90,4 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
             _LOGGER.error("Failed to download %s: %s", url, e)
             continue
 
-        await _supervisor_write_file(session, f"{target_rel}/{name}", content)
+        await _supervisor_write_file(session, f"{UPDATE_TARGET_DIR}/{name}", content)
