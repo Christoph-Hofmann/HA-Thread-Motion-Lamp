@@ -43,6 +43,9 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
                 content = await resp.read()
             dest = target / Path(filename).name
             dest.write_bytes(content)
-            _LOGGER.info("Saved update file: %s", dest)
+            if dest.exists():
+                _LOGGER.info("Saved update file: %s (%d bytes)", dest, dest.stat().st_size)
+            else:
+                _LOGGER.error("Write reported success but file not found: %s", dest)
         except Exception as e:
             _LOGGER.error("Failed to download %s: %s", url, e)
