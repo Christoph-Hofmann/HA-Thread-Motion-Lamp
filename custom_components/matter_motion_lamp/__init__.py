@@ -78,21 +78,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Iterate over all configured entity actions
         for entry in _ENTITY_RENAMES:
-            source_entity_id = entry["source_entity_id"]
+            raw = entry["source_entity_id"]
+            source_ids = raw if isinstance(raw, list) else [raw]
             action = entry.get("action", "rename")
 
-            entity_entry = entity_registry.async_get(source_entity_id)
-            if entity_entry is None or entity_entry.device_id != device.id:
-                _LOGGER.debug(
-                    "Source entity %s not found on device %s", source_entity_id, device.id
-                )
-                continue
+            for source_entity_id in source_ids:
+                entity_entry = entity_registry.async_get(source_entity_id)
+                if entity_entry is None or entity_entry.device_id != device.id:
+                    _LOGGER.debug(
+                        "Source entity %s not found on device %s", source_entity_id, device.id
+                    )
+                    continue
 
-            if action == "delete":
-                _LOGGER.info("Deleting entity %s", source_entity_id)
-                entity_registry.async_remove(source_entity_id)
-                _LOGGER.info("Successfully deleted %s", source_entity_id)
-            else:
+                if action == "delete":
+                    _LOGGER.info("Deleting entity %s", source_entity_id)
+                    entity_registry.async_remove(source_entity_id)
+                    _LOGGER.info("Successfully deleted %s", source_entity_id)
+                    continue
+
                 desired_entity_id = entry["desired_entity_id"]
                 desired_name = entry["desired_name"]
 
@@ -125,7 +128,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 except ValueError as err:
                     _LOGGER.error("Failed to update entity %s: %s", source_entity_id, err)
 
-    _source_entity_ids = {r["source_entity_id"] for r in _ENTITY_RENAMES}
+    _source_entity_ids = {
+        eid
+        for r in _ENTITY_RENAMES
+        for eid in (r["source_entity_id"] if isinstance(r["source_entity_id"], list) else [r["source_entity_id"]])
+    }
 
     async def async_entity_registry_updated(event) -> None:
         """Handle entity registry updated events — catches new entities as they are created."""

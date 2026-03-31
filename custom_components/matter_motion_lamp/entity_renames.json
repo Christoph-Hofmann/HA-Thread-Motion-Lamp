@@ -1,29 +1,29 @@
 [
   {
-    "source_entity_id": "select.motionlamp_wiedereinschaltverhalten_5",
+    "source_entity_id": ["select.motionlamp_wiedereinschaltverhalten_5","select.motionlamp_cct_wiedereinschaltverhalten_5"],
     "desired_entity_id": "select.power_on_motion",
     "desired_name": "Power on Motion"
   },
   {
-    "source_entity_id": "switch.motionlamp_schalter_5",
+    "source_entity_id": ["switch.motionlamp_schalter_5","switch.motionlamp_cct_schalter_5"],
     "action": "delete"
   },
   {
-    "source_entity_id": "binary_sensor.motionlamp_belegung_4",
+    "source_entity_id": ["binary_sensor.motionlamp_belegung_4","binary_sensor.motionlamp_cct_belegung_4"],
     "action": "delete"
   },
   {
-    "source_entity_id": "binary_sensor.motionlamp_belegung_2",
+    "source_entity_id": ["binary_sensor.motionlamp_belegung_2","binary_sensor.motionlamp_cct_belegung_2"],
     "desired_entity_id": "binary_sensor.motion_1",
     "desired_name": "Motion Sensor 1"
   },
   {
-    "source_entity_id": "binary_sensor.motionlamp_belegung_3",
+    "source_entity_id": [ "binary_sensor.motionlamp_belegung_3","binary_sensor.motionlamp_cct_belegung_3"],
     "desired_entity_id": "binary_sensor.motion_2",
     "desired_name": "Motion Sensor 2"
   },
   {
-    "source_entity_id": "sensor.motionlamp_druck",
+    "source_entity_id": ["sensor.motionlamp_druck","sensor.motionlamp_cct_druck"],
     "desired_entity_id": "sensor.pressure",
     "desired_name": "Pressure",
     "unit" : "hPa",
