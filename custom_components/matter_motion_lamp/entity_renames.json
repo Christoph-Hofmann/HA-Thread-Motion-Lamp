@@ -7,5 +7,19 @@
   {
     "source_entity_id": "switch.motionlamp_schalter_5",
     "action": "delete"
-  }
+  },
+  {
+    "source_entity_id": "switch.motionlamp_belegung_4_3",
+    "action": "delete"
+  },
+  {
+    "source_entity_id": "switch.motionlamp_belegung_4_1",
+    "desired_entity_id": "switch.motion_1",
+    "desired_name": "Motion Sensor 1"
+  },
+  {
+    "source_entity_id": "switch.motionlamp_belegung_4_2",
+    "desired_entity_id": "switch.motion_2",
+    "desired_name": "Motion Sensor 2"
+  }  
 ]
