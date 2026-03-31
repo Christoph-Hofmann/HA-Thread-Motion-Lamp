@@ -22,28 +22,79 @@ def _supervisor_headers() -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _supervisor_write_file(session, rel_path: str, content: bytes) -> bool:
-    """Write content to host path via Supervisor fs API. rel_path has no leading slash."""
-    url = f"{_SUPERVISOR_API}/fs/content/{rel_path}"
-    headers = {**_supervisor_headers(), "Content-Type": "application/octet-stream"}
+async def _log_supervisor_info(session) -> None:
+    """Log Supervisor version for debugging."""
     try:
-        async with session.put(url, data=content, headers=headers) as resp:
-            if resp.status in (200, 201):
-                _LOGGER.info("Supervisor wrote %d bytes to /%s", len(content), rel_path)
-                return True
-            body = await resp.text()
-            _LOGGER.error(
-                "Supervisor API returned %s for /%s: %s", resp.status, rel_path, body
-            )
-            return False
+        async with session.get(
+            f"{_SUPERVISOR_API}/supervisor/info", headers=_supervisor_headers()
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                version = data.get("data", {}).get("version", "unknown")
+                _LOGGER.debug("Supervisor version: %s", version)
+            else:
+                _LOGGER.debug("Supervisor info returned %s", resp.status)
     except Exception as e:
-        _LOGGER.error("Supervisor API error writing /%s: %s", rel_path, e)
-        return False
+        _LOGGER.debug("Could not fetch Supervisor info: %s", e)
+
+
+async def _supervisor_mkdir(session, rel_path: str) -> None:
+    """Ensure directory exists via Supervisor FS API."""
+    headers = _supervisor_headers()
+    # Try both known endpoint variants
+    for url in [
+        f"{_SUPERVISOR_API}/fs/mkdir/{rel_path}",
+        f"{_SUPERVISOR_API}/files/mkdir/{rel_path}",
+    ]:
+        try:
+            async with session.post(url, headers=headers) as resp:
+                if resp.status in (200, 201, 409):  # 409 = already exists
+                    _LOGGER.debug("Directory ready via %s (status %s)", url, resp.status)
+                    return
+        except Exception:
+            pass
+
+
+async def _supervisor_write_file(session, rel_path: str, content: bytes) -> bool:
+    """Write content to host path via Supervisor FS API.
+
+    rel_path is the path without a leading slash, e.g.
+    'addon_configs/core_matter_server/updates/file.json'
+    or 'share/matter_motion_lamp/updates/file.json'
+    """
+    headers = {**_supervisor_headers(), "Content-Type": "application/octet-stream"}
+    for url in [
+        f"{_SUPERVISOR_API}/fs/content/{rel_path}",
+        f"{_SUPERVISOR_API}/files/content/{rel_path}",
+    ]:
+        try:
+            async with session.put(url, data=content, headers=headers) as resp:
+                if resp.status in (200, 201):
+                    _LOGGER.info(
+                        "Supervisor wrote %d bytes → /%s (via %s)",
+                        len(content), rel_path, url,
+                    )
+                    return True
+                body = await resp.text()
+                _LOGGER.debug(
+                    "Supervisor API %s → %s: %s", url, resp.status, body[:200]
+                )
+        except Exception as e:
+            _LOGGER.debug("Supervisor API error for %s: %s", url, e)
+
+    _LOGGER.error(
+        "All Supervisor write endpoints failed for /%s — check Supervisor version "
+        "(FS API requires Supervisor >= 2023.11)",
+        rel_path,
+    )
+    return False
 
 
 async def async_fetch_updates(hass: HomeAssistant) -> None:
     """Download all JSON files from the update server to the target directory."""
     session = async_get_clientsession(hass)
+
+    await _log_supervisor_info(session)
 
     _LOGGER.info("Fetching update index from %s", UPDATE_SERVER_URL)
     try:
@@ -62,8 +113,9 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
 
     _LOGGER.info("Found %d update file(s): %s", len(filenames), filenames)
 
-    # Derive relative host path from UPDATE_TARGET_DIR (strip leading slash)
+    # Derive relative host path (strip leading slash)
     target_rel = UPDATE_TARGET_DIR.lstrip("/")
+    await _supervisor_mkdir(session, target_rel)
 
     for filename in filenames:
         name = Path(filename).name
