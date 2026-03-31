@@ -95,20 +95,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 desired_entity_id = entry["desired_entity_id"]
                 desired_name = entry["desired_name"]
 
-                if entity_entry.entity_id == desired_entity_id:
-                    _LOGGER.debug("Entity %s already renamed, skipping", desired_entity_id)
+                unit = entry.get("unit")
+                precision = entry.get("precision")
+
+                already_renamed = entity_entry.entity_id == desired_entity_id
+                already_unit = entity_entry.unit_of_measurement == unit if unit else True
+                already_precision = entity_entry.options.get("sensor", {}).get("display_precision") == precision if precision is not None else True
+
+                if already_renamed and already_unit and already_precision:
+                    _LOGGER.debug("Entity %s already up to date, skipping", desired_entity_id)
                     continue
 
-                _LOGGER.info("Renaming entity %s to %s", source_entity_id, desired_entity_id)
+                _LOGGER.info("Updating entity %s → %s", source_entity_id, desired_entity_id)
                 try:
-                    entity_registry.async_update_entity(
-                        entity_entry.entity_id,
-                        new_entity_id=desired_entity_id,
-                        name=desired_name,
-                    )
-                    _LOGGER.info("Successfully renamed to %s", desired_entity_id)
+                    kwargs = {"name": desired_name}
+                    if not already_renamed:
+                        kwargs["new_entity_id"] = desired_entity_id
+                    if unit:
+                        kwargs["unit_of_measurement"] = unit
+                    entity_registry.async_update_entity(entity_entry.entity_id, **kwargs)
+                    if precision is not None:
+                        entity_registry.async_update_entity_options(
+                            desired_entity_id,
+                            "sensor",
+                            {"display_precision": precision},
+                        )
+                    _LOGGER.info("Successfully updated %s", desired_entity_id)
                 except ValueError as err:
-                    _LOGGER.error("Failed to rename entity %s: %s", source_entity_id, err)
+                    _LOGGER.error("Failed to update entity %s: %s", source_entity_id, err)
 
     _source_entity_ids = {r["source_entity_id"] for r in _ENTITY_RENAMES}
 

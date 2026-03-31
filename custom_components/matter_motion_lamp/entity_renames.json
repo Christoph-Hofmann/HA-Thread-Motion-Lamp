@@ -21,5 +21,12 @@
     "source_entity_id": "binary_sensor.motionlamp_belegung_3",
     "desired_entity_id": "binary_sensor.motion_2",
     "desired_name": "Motion Sensor 2"
-  }  
+  },
+  {
+    "source_entity_id": "sensor.motionlamp_druck",
+    "desired_entity_id": "sensor.pressure",
+    "desired_name": "Pressure",
+    "unit" : "hPa",
+    "precision" : 0
+  }
 ]
