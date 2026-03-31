@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Blink",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 0, "effectVariant": 0}
+  },
+  {
+    "name": "Flash",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 11, "effectVariant": 0}
+  }
+]
