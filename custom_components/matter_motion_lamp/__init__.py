@@ -4,10 +4,13 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from datetime import timedelta
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.config_entries import ConfigEntry
+from .updater import async_fetch_updates
 from .const import (
     DOMAIN,
     MANUFACTURER_ID,
@@ -176,9 +179,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, async_startup)
 
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "select", "button"])
 
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "select"])
+    # Run once at startup then every 24 hours
+    await async_fetch_updates(hass)
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass,
+            lambda _: hass.async_create_task(async_fetch_updates(hass)),
+            timedelta(hours=24),
+        )
+    )
 
     _LOGGER.info("Matter Motion Lamp component loaded")
     return True
@@ -186,4 +197,4 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "select"])
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "select", "button"])

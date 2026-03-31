@@ -17,6 +17,10 @@ ENTITY_RENAMES_FILE = "entity_renames.json"
 # JSON file containing the list of identify effects
 ACTIONS_FILE = "actions.json"
 
+# Firmware/config update server
+UPDATE_SERVER_URL = "http://commisioner.its-hofmann.lo:5000/updates/"
+UPDATE_TARGET_DIR = "/addon_configs/core_matter_server/updates"
+
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
 ENDPOINT_ID = 0
