@@ -7,18 +7,13 @@ from datetime import timedelta
 
 import websockets
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorEntityDescription,
-)
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.core import HomeAssistant
 
 from .const import (
     MATTER_SERVER_URL,
@@ -47,6 +42,13 @@ def _node_id_from_matter_identifier(value: str) -> int | None:
     return None
 
 
+def _format_uptime(seconds: int) -> str:
+    days = seconds // 86400
+    hours = (seconds % 86400) // 3600
+    minutes = (seconds % 3600) // 60
+    return f"{days}d {hours}h {minutes}m"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -69,72 +71,47 @@ async def async_setup_entry(
             _LOGGER.warning("Could not extract node_id for device %s", device.name)
             continue
 
-        device_info = DeviceInfo(identifiers=device.identifiers)
-        for unit_key, unit, converter in _UPTIME_UNITS:
-            entities.append(MatterUptimeSensor(node_id, device_info, unit_key, unit, converter))
+        entities.append(MatterUptimeSensor(node_id, DeviceInfo(identifiers=device.identifiers)))
 
     async_add_entities(entities, update_before_add=True)
 
     async def async_update(event_time):
-        # Group entities by node_id and fetch once per node
-        by_node: dict[int, list[MatterUptimeSensor]] = {}
         for entity in entities:
-            by_node.setdefault(entity._node_id, []).append(entity)
-        for node_id, node_entities in by_node.items():
-            seconds = await node_entities[0]._read_uptime_seconds()
-            for entity in node_entities:
-                if seconds is not None:
-                    entity._set_uptime_seconds(seconds)
-                    entity.async_write_ha_state()
-                else:
-                    entity._available = False
-                    entity.async_write_ha_state()
+            await entity.async_update()
 
     entry.async_on_unload(
         async_track_time_interval(hass, async_update, SCAN_INTERVAL)
     )
 
 
-_UPTIME_UNITS = [
-    ("days",    UnitOfTime.DAYS,    lambda s: s // 86400),
-    ("hours",   UnitOfTime.HOURS,   lambda s: (s % 86400) // 3600),
-    ("minutes", UnitOfTime.MINUTES, lambda s: (s % 3600) // 60),
-]
-
-
 class MatterUptimeSensor(SensorEntity):
-    """One component (days / hours / minutes) of a Matter device's uptime."""
+    """Uptime sensor for a Matter device, displayed as Xd Yh Zm."""
 
-    def __init__(self, node_id: int, device_info: DeviceInfo, unit_key: str,
-                 unit: str, converter) -> None:
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(self, node_id: int, device_info: DeviceInfo) -> None:
         self._node_id = node_id
-        self._converter = converter
-        self._attr_unique_id = f"matter_uptime_{node_id}_{unit_key}"
-        self._attr_name = f"UpTime {unit_key.capitalize()}"
-        self._attr_device_class = SensorDeviceClass.DURATION
-        self._attr_native_unit_of_measurement = unit
+        self._attr_unique_id = f"matter_uptime_{node_id}"
+        self._attr_name = "UpTime"
         self._attr_device_info = device_info
-        self._state = None
+        self._attr_native_value = None
         self._available = False
 
     @property
     def native_value(self):
-        return self._state
+        return self._attr_native_value
 
     @property
     def available(self):
         return self._available
 
-    def _set_uptime_seconds(self, seconds: int) -> None:
-        self._state = self._converter(seconds)
-        self._available = True
-
     async def async_update(self) -> None:
         try:
             seconds = await self._read_uptime_seconds()
             if seconds is not None:
-                self._set_uptime_seconds(seconds)
-                _LOGGER.debug("Node %s uptime: %s seconds", self._node_id, seconds)
+                self._attr_native_value = _format_uptime(seconds)
+                self._available = True
+                _LOGGER.debug("Node %s uptime: %s", self._node_id, self._attr_native_value)
             else:
                 self._available = False
                 _LOGGER.warning("Node %s: uptime not returned", self._node_id)
