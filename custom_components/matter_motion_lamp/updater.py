@@ -1,8 +1,6 @@
-"""Fetch JSON update files from the update server and write via Supervisor API."""
+"""Fetch JSON update files from the update server."""
 
-import base64
 import logging
-import os
 import re
 from pathlib import Path
 
@@ -13,52 +11,14 @@ from .const import UPDATE_SERVER_URL, UPDATE_TARGET_DIR
 
 _LOGGER = logging.getLogger(__name__)
 
-_SUPERVISOR_API = "http://supervisor"
-
-
-def _supervisor_headers() -> dict:
-    token = os.environ.get("SUPERVISOR_TOKEN", "")
-    if not token:
-        _LOGGER.warning("SUPERVISOR_TOKEN not set — cannot write via Supervisor API")
-    return {"Authorization": f"Bearer {token}"}
-
-
-async def _supervisor_mkdir(session, path: str) -> None:
-    """Create directory on host via Supervisor FS API."""
-    url = f"{_SUPERVISOR_API}/fs/mkdir"
-    try:
-        async with session.post(url, headers=_supervisor_headers(), json={"path": path}) as resp:
-            if resp.status in (200, 201):
-                _LOGGER.debug("Directory ready: %s", path)
-            else:
-                body = await resp.text()
-                _LOGGER.warning("mkdir %s returned %s: %s", path, resp.status, body[:200])
-    except Exception as e:
-        _LOGGER.warning("mkdir %s failed: %s", path, e)
-
-
-async def _supervisor_write_file(session, path: str, content: bytes) -> bool:
-    """Write file on host via Supervisor FS API (POST /fs/file, base64 content)."""
-    url = f"{_SUPERVISOR_API}/fs/file"
-    body = {
-        "path": path,
-        "content": base64.b64encode(content).decode(),
-    }
-    try:
-        async with session.post(url, headers=_supervisor_headers(), json=body) as resp:
-            if resp.status in (200, 201):
-                _LOGGER.info("Saved %d bytes → %s", len(content), path)
-                return True
-            text = await resp.text()
-            _LOGGER.error("Supervisor /fs/file returned %s for %s: %s", resp.status, path, text[:200])
-            return False
-    except Exception as e:
-        _LOGGER.error("Supervisor /fs/file error for %s: %s", path, e)
-        return False
-
 
 async def async_fetch_updates(hass: HomeAssistant) -> None:
-    """Download all JSON files from the update server to the target directory."""
+    """Download all JSON files from the update server to the target directory.
+
+    Writes to UPDATE_TARGET_DIR using direct file I/O.  /share/ is a proper
+    bind-mount in the HA core container so files written there are visible on
+    the host — unlike /addon_configs/ which only hits the container overlay.
+    """
     session = async_get_clientsession(hass)
 
     _LOGGER.info("Fetching update index from %s", UPDATE_SERVER_URL)
@@ -77,7 +37,12 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
 
     _LOGGER.info("Found %d update file(s): %s", len(filenames), filenames)
 
-    await _supervisor_mkdir(session, UPDATE_TARGET_DIR)
+    target = Path(UPDATE_TARGET_DIR)
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        _LOGGER.error("Cannot create target directory %s: %s", target, e)
+        return
 
     for filename in filenames:
         name = Path(filename).name
@@ -90,4 +55,9 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
             _LOGGER.error("Failed to download %s: %s", url, e)
             continue
 
-        await _supervisor_write_file(session, f"{UPDATE_TARGET_DIR}/{name}", content)
+        dest = target / name
+        try:
+            dest.write_bytes(content)
+            _LOGGER.info("Saved %s (%d bytes) → %s", name, len(content), dest)
+        except OSError as e:
+            _LOGGER.error("Failed to write %s: %s", dest, e)
