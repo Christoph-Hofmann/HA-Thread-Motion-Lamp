@@ -9,7 +9,7 @@
     "action": "delete"
   },
   {
-    "source_entity_id": "binary_sensor.motionlamp_belegung_2",
+    "source_entity_id": "binary_sensor.motionlamp_belegung_4",
     "action": "delete"
   },
   {
