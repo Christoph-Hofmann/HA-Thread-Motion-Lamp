@@ -17,6 +17,7 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     MATTER_SERVER_URL,
+    MODEL_NAMES,
     ENDPOINT_ID,
     CLUSTER_ID,
     ATTRIBUTE_ID,
@@ -58,7 +59,7 @@ async def async_setup_entry(
     entities: list[MatterUptimeSensor] = []
 
     for device in dr.async_get(hass).devices.values():
-        if device.manufacturer != "Espressif" or device.model != "MotionLamp":
+        if device.manufacturer != "Espressif" or device.model not in MODEL_NAMES:
             continue
 
         node_id = None

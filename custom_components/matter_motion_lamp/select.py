@@ -14,7 +14,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import ACTIONS_FILE, MATTER_SERVER_URL
+from .const import ACTIONS_FILE, MATTER_SERVER_URL, MODEL_NAMES
 from .sensor import _node_id_from_matter_identifier
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ async def async_setup_entry(
     entities: list[EffectSelectEntity] = []
 
     for device in dr.async_get(hass).devices.values():
-        if device.manufacturer != "Espressif" or device.model != "MotionLamp":
+        if device.manufacturer != "Espressif" or device.model not in MODEL_NAMES:
             continue
 
         node_id = None

@@ -11,9 +11,10 @@ from homeassistant.config_entries import ConfigEntry
 from .const import (
     DOMAIN,
     MANUFACTURER_ID,
-    MODEL_NAME,
+    MODEL_NAMES,
     MODEL_ID_MIN,
     MODEL_ID_MAX,
+    MODEL_IDS_EXTRA,
     ENTITY_RENAMES_FILE,
 )
 
@@ -41,13 +42,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Check the model field (numeric range or known model name)
         if device.model:
-            if device.model == MODEL_NAME:
+            if device.model in MODEL_NAMES:
                 model_matches = True
-                _LOGGER.debug("Model matched by name: %s (model_id range: %s-%s)", device.model, MODEL_ID_MIN, MODEL_ID_MAX)
+                _LOGGER.debug("Model matched by name: %s", device.model)
             else:
                 try:
                     model_id = int(device.model)
-                    if MODEL_ID_MIN <= model_id <= MODEL_ID_MAX:
+                    if MODEL_ID_MIN <= model_id <= MODEL_ID_MAX or model_id in MODEL_IDS_EXTRA:
                         model_matches = True
                         _LOGGER.debug("Model matched by id: %s", model_id)
                 except (ValueError, TypeError):
