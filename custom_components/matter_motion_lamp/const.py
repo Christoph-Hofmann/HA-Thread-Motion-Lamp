@@ -19,7 +19,7 @@ ACTIONS_FILE = "actions.json"
 
 # Firmware/config update server
 UPDATE_SERVER_URL = "http://commisioner.its-hofmann.lo:5000/updates/"
-UPDATE_TARGET_DIR = "/addon_configs/core_matter_server/updates"
+UPDATE_TARGET_DIR = "/share/matter_motion_lamp/updates"
 
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
