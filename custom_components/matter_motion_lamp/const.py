@@ -27,5 +27,13 @@ ENDPOINT_ID = 0
 CLUSTER_ID = 51  # Basic Information Cluster
 ATTRIBUTE_ID = 2  # UpTime Attribute
 
+# Light Count control (Mode Select cluster on the lamp endpoint).
+# Dimmable-variant firmware only ("MotionLamp", not "MotionLamp CCT") — see
+# LIGHT_COUNT_MODEL_NAME below.
+LAMP_ENDPOINT_ID = 1
+MODE_SELECT_CLUSTER_ID = 80  # Mode Select Cluster
+MODE_SELECT_CURRENT_MODE_ATTRIBUTE_ID = 3  # CurrentMode Attribute
+LIGHT_COUNT_MODEL_NAME = "MotionLamp"
+
 # Update interval in seconds
 SCAN_INTERVAL = 300  # 5 minutes
