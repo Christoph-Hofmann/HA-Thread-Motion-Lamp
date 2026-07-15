@@ -23,6 +23,12 @@ UPDATE_TARGET_DIR = "/share/matter_motion_lamp/updates"
 
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
+# Official "Matter Server" add-on slug (Home Assistant core add-ons repo).
+# Used for the "Restart Matter Server" button, which calls the hassio
+# integration's addon_restart service — only works on Supervised/HAOS
+# installs where that add-on is actually installed under this slug.
+MATTER_SERVER_ADDON_SLUG = "core_matter_server"
+
 ENDPOINT_ID = 0
 CLUSTER_ID = 51  # Basic Information Cluster
 ATTRIBUTE_ID = 2  # UpTime Attribute

@@ -3,9 +3,10 @@
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path
 from datetime import timedelta
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_STATE_CHANGED
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
@@ -19,6 +20,7 @@ from .const import (
     MODEL_ID_MAX,
     MODEL_IDS_EXTRA,
     ENTITY_RENAMES_FILE,
+    MATTER_SERVER_ADDON_SLUG,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,10 +33,8 @@ _ENTITY_RENAMES: list[dict] = json.loads(
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Matter Motion Lamp from a config entry."""
 
-    async def check_and_rename_device(device, entity_registry) -> None:
-        """Check if device matches Matter IDs and rename if needed."""
-        _LOGGER.debug("Checking device#1: %s (manufacturer: %s, model: %s, identifiers: %s)",
-                      device.name, device.manufacturer, device.model, device.identifiers)
+    def _is_motionlamp_device(device) -> bool:
+        """Check if device matches the Espressif MotionLamp manufacturer/model IDs."""
         manufacturer_matches = False
         model_matches = False
 
@@ -74,7 +74,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             pass
 
         # Both manufacturer AND model must match
-        if not (manufacturer_matches and model_matches):
+        return manufacturer_matches and model_matches
+
+    async def check_and_rename_device(device, entity_registry) -> None:
+        """Check if device matches Matter IDs and rename if needed."""
+        _LOGGER.debug("Checking device#1: %s (manufacturer: %s, model: %s, identifiers: %s)",
+                      device.name, device.manufacturer, device.model, device.identifiers)
+        if not _is_motionlamp_device(device):
             return
 
         _LOGGER.info("Processing target device: %s (ID: %s)", device.name, device.id)
@@ -168,9 +174,66 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for device in device_registry.devices.values():
             await check_and_rename_device(device, entity_registry)
 
+    async def async_light_count_state_changed(event) -> None:
+        """Restart Matter Server whenever a MotionLamp's light count decreases.
+
+        HA's built-in matter integration exposes the firmware's Mode Select
+        cluster ("Light Count") as a native select entity. Decreasing it
+        destroys a dynamic endpoint device-side; python-matter-server can be
+        left with a stale cached node/entity mapping afterwards even though
+        the device itself is healthy. Restarting the add-on forces a clean
+        re-interview. This affects every Matter device on the instance
+        briefly, not just this one.
+        """
+        entity_id = event.data.get("entity_id", "")
+        if not entity_id.startswith("select."):
+            return
+
+        old_state = event.data.get("old_state")
+        new_state = event.data.get("new_state")
+        if old_state is None or new_state is None:
+            return
+
+        entity_entry = er.async_get(hass).async_get(entity_id)
+        if entity_entry is None or entity_entry.device_id is None:
+            return
+
+        name = (entity_entry.name or entity_entry.original_name or "").lower()
+        if "light count" not in name:
+            return
+
+        device = dr.async_get(hass).async_get(entity_entry.device_id)
+        if device is None or not _is_motionlamp_device(device):
+            return
+
+        old_match = re.match(r"(\d+)", old_state.state or "")
+        new_match = re.match(r"(\d+)", new_state.state or "")
+        if not old_match or not new_match:
+            return
+
+        old_count, new_count = int(old_match.group(1)), int(new_match.group(1))
+        if new_count >= old_count:
+            return
+
+        _LOGGER.info(
+            "Light count decreased %s → %s on %s, restarting Matter Server",
+            old_count, new_count, entity_id,
+        )
+        try:
+            await hass.services.async_call(
+                "hassio", "addon_restart", {"addon": MATTER_SERVER_ADDON_SLUG}, blocking=True
+            )
+        except Exception as e:
+            _LOGGER.error("Failed to restart Matter Server add-on: %s", e)
+
     # Listen for new entities being registered (handles newly added devices)
     entry.async_on_unload(
         hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, async_entity_registry_updated)
+    )
+
+    # Listen for the Light Count select entity dropping in value
+    entry.async_on_unload(
+        hass.bus.async_listen(EVENT_STATE_CHANGED, async_light_count_state_changed)
     )
 
     # Run immediately if HA is already running, otherwise wait for startup
