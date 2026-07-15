@@ -198,3 +198,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, ["sensor", "select", "button"])
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow removing any device belonging to this config entry.
+
+    This integration doesn't own physical devices — the only device it
+    registers is a placeholder host for its own service entities (e.g.
+    button.fetch_updates), so there's no pairing state to protect.
+    """
+    return True
