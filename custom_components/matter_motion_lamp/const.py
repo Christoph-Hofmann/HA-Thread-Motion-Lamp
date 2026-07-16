@@ -19,7 +19,11 @@ ACTIONS_FILE = "actions.json"
 
 # Firmware/config update server
 UPDATE_SERVER_URL = "http://commisioner.its-hofmann.lo:5000/updates/"
-UPDATE_TARGET_DIR = "/share/matter_motion_lamp/updates"
+# Must match the Matter Server add-on's --ota-provider-dir exactly (confirmed
+# via its startup command line in the add-on log) — that's the only directory
+# it actually scans for local OTA manifests. /config/ is HA Core's own main
+# config directory, so it's directly writable from this integration.
+UPDATE_TARGET_DIR = "/config/updates"
 
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 

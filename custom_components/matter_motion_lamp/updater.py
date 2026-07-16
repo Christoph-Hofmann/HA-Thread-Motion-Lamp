@@ -1,5 +1,6 @@
 """Fetch JSON update files from the update server."""
 
+import functools
 import logging
 import re
 from pathlib import Path
@@ -15,9 +16,10 @@ _LOGGER = logging.getLogger(__name__)
 async def async_fetch_updates(hass: HomeAssistant) -> None:
     """Download all JSON files from the update server to the target directory.
 
-    Writes to UPDATE_TARGET_DIR using direct file I/O.  /share/ is a proper
-    bind-mount in the HA core container so files written there are visible on
-    the host — unlike /addon_configs/ which only hits the container overlay.
+    UPDATE_TARGET_DIR must match the Matter Server add-on's --ota-provider-dir
+    exactly, or it silently never picks up the manifests — that add-on only
+    scans the one directory it was launched with (confirmed via its startup
+    command line in the add-on log), it doesn't watch anywhere else.
     """
     session = async_get_clientsession(hass)
 
@@ -39,7 +41,7 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
 
     target = Path(UPDATE_TARGET_DIR)
     try:
-        target.mkdir(parents=True, exist_ok=True)
+        await hass.async_add_executor_job(functools.partial(target.mkdir, parents=True, exist_ok=True))
     except OSError as e:
         _LOGGER.error("Cannot create target directory %s: %s", target, e)
         return
@@ -57,7 +59,7 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
 
         dest = target / name
         try:
-            dest.write_bytes(content)
+            await hass.async_add_executor_job(dest.write_bytes, content)
             _LOGGER.info("Saved %s (%d bytes) → %s", name, len(content), dest)
         except OSError as e:
             _LOGGER.error("Failed to write %s: %s", dest, e)
