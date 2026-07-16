@@ -1,4 +1,4 @@
-"""Fetch JSON update files from the update server."""
+"""Fetch OTA firmware files from the update server for Matter Server to import."""
 
 import functools
 import logging
@@ -14,12 +14,23 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_fetch_updates(hass: HomeAssistant) -> None:
-    """Download all JSON files from the update server to the target directory.
+    """Download OTA files from the update server to Matter Server's provider directory.
 
     UPDATE_TARGET_DIR must match the Matter Server add-on's --ota-provider-dir
-    exactly, or it silently never picks up the manifests — that add-on only
-    scans the one directory it was launched with (confirmed via its startup
-    command line in the add-on log), it doesn't watch anywhere else.
+    exactly, or it silently never picks up anything — that add-on only scans
+    the one directory it was launched with (confirmed via its startup command
+    line in the add-on log), it doesn't watch anywhere else.
+
+    Matter Server (the JS/matter.js-based add-on) only scans that directory
+    for .ota binary files — it reads vid/pid/software version directly from
+    each file's own embedded header and *ignores .json files entirely*, so a
+    JSON manifest alone (what this used to fetch) is never enough on its own.
+    We still fetch the .json files too since they're harmless and useful as
+    human-readable notes, but the .ota files are what actually matters.
+    Matter Server deletes each .ota file from this directory once it's
+    successfully imported, so re-fetching everything on every call is
+    intentional, not wasteful — anything already known to Matter Server just
+    won't be sitting here anymore.
     """
     session = async_get_clientsession(hass)
 
@@ -32,9 +43,9 @@ async def async_fetch_updates(hass: HomeAssistant) -> None:
         _LOGGER.error("Failed to fetch update index: %s", e)
         return
 
-    filenames = re.findall(r'href="([^"]+\.json)"', body)
+    filenames = re.findall(r'href="([^"]+\.(?:json|ota))"', body)
     if not filenames:
-        _LOGGER.warning("No JSON files found at %s", UPDATE_SERVER_URL)
+        _LOGGER.warning("No update files found at %s", UPDATE_SERVER_URL)
         return
 
     _LOGGER.info("Found %d update file(s): %s", len(filenames), filenames)
