@@ -23,6 +23,10 @@ UPDATE_TARGET_DIR = "/share/matter_motion_lamp/updates"
 
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
+# Dimmable-variant model name — the only variant with the runtime Light Count
+# feature (not "MotionLamp CCT"). Used to scope the master "All Lights" entity.
+LIGHT_COUNT_MODEL_NAME = "MotionLamp"
+
 # Official "Matter Server" add-on slug (Home Assistant core add-ons repo).
 # Used for the "Restart Matter Server" button, which calls the hassio
 # integration's addon_restart service — only works on Supervised/HAOS

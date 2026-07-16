@@ -242,7 +242,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, async_startup)
 
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "select", "button"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "select", "button", "light"])
 
     # Run once at startup then every 24 hours
     await async_fetch_updates(hass)
@@ -260,7 +260,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "select", "button"])
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "select", "button", "light"])
 
 
 async def async_remove_config_entry_device(
