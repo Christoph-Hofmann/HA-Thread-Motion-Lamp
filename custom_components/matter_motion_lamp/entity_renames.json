@@ -9,7 +9,7 @@
     "desired_name": "Power on Motion"
   },
   {
-    "source_entity_id": ["binary_sensor.motionlamp_belegung_4","binary_sensor.motionlamp_cct_belegung_4"],
+    "source_entity_id": ["binary_sensor.motionlamp_belegung_4","binary_sensor.motionlamp_belegung_4_2","binary_sensor.motionlamp_cct_belegung_4"],
     "action": "delete"
   },
   {
