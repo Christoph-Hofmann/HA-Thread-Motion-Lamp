@@ -33,7 +33,7 @@ Automatically rename Matter device entities based on manufacturer and model IDs.
 3. Click **Submit** — no configuration needed. All values are fixed constants:
    - **Manufacturer ID**: `65521` (Espressif)
    - **Model ID range**: `32768–32820` (MotionLamp)
-   - **Entity ID**: `switch.power_on_motion`
+   - **Entity ID**: `switch.motionlamp_power_on_motion`
    - **Name**: `Power on Motion`
 
 ## How It Works
@@ -47,7 +47,7 @@ The integration:
 
 For a Matter MotionLamp device:
 - Original: `switch.motionlamp_schalter_5_3`
-- After rename: `switch.power_on_motion`
+- After rename: `switch.motionlamp_power_on_motion`
 
 ## Debugging
 
