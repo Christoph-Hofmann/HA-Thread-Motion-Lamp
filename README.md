@@ -1,5 +1,7 @@
 # Matter Motion Lamp for Home Assistant
 
+![Version](https://img.shields.io/github/v/tag/Christoph-Hofmann/HA-Thread-Motion-Lamp?label=version)
+
 Automatically rename Matter device entities based on manufacturer and model IDs.
 
 ## Features
