@@ -14,7 +14,7 @@
   },
   {
     "source_entity_id": ["binary_sensor.motionlamp_belegung_2","binary_sensor.motionlamp_cct_belegung_2"],
-    "desired_entity_id": "binary_sensor.motion_1",
+    "desired_entity_id": "binary_sensor.motionlamp_motion_sensor_1",
     "desired_name": "Motion Sensor 1"
   },
   {
