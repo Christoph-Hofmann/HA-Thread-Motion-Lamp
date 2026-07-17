@@ -30,6 +30,26 @@ _ENTITY_RENAMES: list[dict] = json.loads(
 )
 
 
+def _unique_entity_id(entity_registry, desired_entity_id: str, current_entity_id: str) -> str:
+    """Return desired_entity_id, or the first free desired_entity_id_N if it's
+    already taken by a *different* entity — e.g. two physical devices that
+    still share the same generic HA device name will otherwise both try to
+    claim the exact same target id, and the second one's rename silently
+    fails with ValueError (HA's entity registry enforces global uniqueness).
+    """
+    existing = entity_registry.async_get(desired_entity_id)
+    if existing is None or existing.entity_id == current_entity_id:
+        return desired_entity_id
+    domain, _, slug = desired_entity_id.partition(".")
+    n = 2
+    while True:
+        candidate = f"{domain}.{slug}_{n}"
+        existing = entity_registry.async_get(candidate)
+        if existing is None or existing.entity_id == current_entity_id:
+            return candidate
+        n += 1
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Matter Motion Lamp from a config entry."""
 
@@ -105,7 +125,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     _LOGGER.info("Successfully deleted %s", source_entity_id)
                     continue
 
-                desired_entity_id = entry["desired_entity_id"]
+                desired_entity_id = _unique_entity_id(
+                    entity_registry, entry["desired_entity_id"], entity_entry.entity_id
+                )
                 desired_name = entry["desired_name"]
 
                 unit = entry.get("unit")
