@@ -11,6 +11,13 @@
     "endpoint_id": 1,
     "cluster_id": 3,
     "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 2, "effectVariant": 0}
+  },
+  {
+    "name": "Channel Blink",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
     "payload": {"effectIdentifier": 11, "effectVariant": 0}
   }
 ]
