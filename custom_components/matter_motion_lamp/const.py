@@ -50,7 +50,11 @@ LAMP_ENDPOINT_ID = 1  # the lamp is always endpoint 1 on this firmware
 # Custom vendor-specific cluster (see LAMP_LEDCOUNT_CLUSTER_ID in
 # main/app_priv.h, motionlampthread firmware repo) — a Manufacturer
 # Extensible Identifier: (vendor_id << 16) | local_id = (0xFFF1 << 16) | 0xFC01.
+# Read-only from HA: matter-server's write_attribute requires the cluster to
+# be one of matter.js's compiled-in standard clusters (ClusterMap lookup in
+# @matter-server/ws-controller's ControllerCommandHandler#writeAttribute),
+# which a custom vendor cluster never is — confirmed from that package's
+# source, not just an untested guess. Reading works fine (the read path
+# addresses purely by numeric IDs, no schema needed).
 LED_COUNT_CLUSTER_ID = 0xFFF1FC01
 LED_COUNT_ATTRIBUTE_ID = 0x0000
-LED_COUNT_MIN = 1
-LED_COUNT_MAX = 101  # must match WS2812_STRIP_LED_COUNT in app_priv.h
