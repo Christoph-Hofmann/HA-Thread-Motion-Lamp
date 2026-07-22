@@ -264,7 +264,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, async_startup)
 
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "select", "button", "light"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "select", "button", "light", "number"])
 
     # Run once at startup then every 24 hours
     await async_fetch_updates(hass)
