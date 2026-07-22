@@ -21,10 +21,6 @@ from .const import (
     ENDPOINT_ID,
     CLUSTER_ID,
     ATTRIBUTE_ID,
-    LAMP_ENDPOINT_ID,
-    LED_COUNT_CLUSTER_ID,
-    LED_COUNT_ATTRIBUTE_ID,
-    WS2812_MODEL_NAME,
     SCAN_INTERVAL as _SCAN_INTERVAL_SECONDS,
 )
 
@@ -59,8 +55,8 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up one UpTime sensor per MotionLamp device, plus LED Count for the WS2812 strip variant."""
-    entities: list[MatterUptimeSensor | LedCountSensor] = []
+    """Set up one UpTime sensor per MotionLamp device."""
+    entities: list[MatterUptimeSensor] = []
 
     for device in dr.async_get(hass).devices.values():
         if device.manufacturer != "Espressif" or device.model not in MODEL_NAMES:
@@ -77,8 +73,6 @@ async def async_setup_entry(
             continue
 
         entities.append(MatterUptimeSensor(node_id, DeviceInfo(identifiers=device.identifiers)))
-        if device.model == WS2812_MODEL_NAME:
-            entities.append(LedCountSensor(node_id, DeviceInfo(identifiers=device.identifiers)))
 
     async_add_entities(entities, update_before_add=True)
 
@@ -131,84 +125,6 @@ class MatterUptimeSensor(SensorEntity):
         try:
             async with websockets.connect(MATTER_SERVER_URL) as websocket:
                 _LOGGER.debug("Node %s: sending start_listening", self._node_id)
-                await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
-
-                while True:
-                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                    msg = json.loads(raw)
-                    if msg.get("message_id") == "1":
-                        break
-
-                for node in msg.get("result", []):
-                    if node.get("node_id") == self._node_id:
-                        value = node.get("attributes", {}).get(attribute_key)
-                        if value is not None:
-                            return int(value)
-                        _LOGGER.warning("Node %s: attribute %s not found", self._node_id, attribute_key)
-                        return None
-
-                _LOGGER.warning("Node %s not found in start_listening response", self._node_id)
-                return None
-
-        except websockets.exceptions.WebSocketException as e:
-            _LOGGER.error("Node %s: WebSocket error: %s", self._node_id, e)
-            return None
-        except asyncio.TimeoutError:
-            _LOGGER.error("Node %s: timeout waiting for response", self._node_id)
-            return None
-        except json.JSONDecodeError as e:
-            _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
-            return None
-
-
-class LedCountSensor(SensorEntity):
-    """Read-only view of the WS2812 strip's active LED count.
-
-    Backed by a custom vendor-specific Matter attribute (see
-    LAMP_LEDCOUNT_CLUSTER_ID in the motionlampthread firmware's
-    main/app_priv.h) that matter-server can read but not write — its
-    write_attribute command requires the cluster to be one of matter.js's
-    compiled-in standard clusters, which a custom vendor cluster never is.
-    Change the value by flashing a different default, not from HA.
-    """
-
-    _attr_icon = "mdi:led-strip-variant"
-    _attr_native_unit_of_measurement = "LEDs"
-
-    def __init__(self, node_id: int, device_info: DeviceInfo) -> None:
-        self._node_id = node_id
-        self._attr_unique_id = f"matter_led_count_{node_id}"
-        self._attr_name = "LED Count"
-        self._attr_device_info = device_info
-        self._attr_native_value = None
-        self._available = False
-
-    @property
-    def native_value(self):
-        return self._attr_native_value
-
-    @property
-    def available(self):
-        return self._available
-
-    async def async_update(self) -> None:
-        try:
-            value = await self._read_led_count()
-            if value is not None:
-                self._attr_native_value = value
-                self._available = True
-                _LOGGER.debug("Node %s LED count: %s", self._node_id, value)
-            else:
-                self._available = False
-                _LOGGER.warning("Node %s: LED count not returned", self._node_id)
-        except Exception as e:
-            self._available = False
-            _LOGGER.error("Node %s: error reading LED count: %s", self._node_id, e)
-
-    async def _read_led_count(self) -> int | None:
-        attribute_key = f"{LAMP_ENDPOINT_ID}/{LED_COUNT_CLUSTER_ID}/{LED_COUNT_ATTRIBUTE_ID}"
-        try:
-            async with websockets.connect(MATTER_SERVER_URL) as websocket:
                 await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
 
                 while True:
