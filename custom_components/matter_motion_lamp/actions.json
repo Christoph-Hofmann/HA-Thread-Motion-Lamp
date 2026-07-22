@@ -19,5 +19,12 @@
     "cluster_id": 3,
     "command_name": "TriggerEffect",
     "payload": {"effectIdentifier": 11, "effectVariant": 0}
+  },
+  {
+    "name": "Rainbow",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 1, "effectVariant": 0}
   }
 ]
