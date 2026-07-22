@@ -10,7 +10,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import LIGHT_COUNT_MODEL_NAME
+from .const import LIGHT_COUNT_MODEL_NAMES
 from .sensor import _node_id_from_matter_identifier
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ async def async_setup_entry(
     entities: list[MasterLightEntity] = []
 
     for device in dr.async_get(hass).devices.values():
-        if device.manufacturer != "Espressif" or device.model != LIGHT_COUNT_MODEL_NAME:
+        if device.manufacturer != "Espressif" or device.model not in LIGHT_COUNT_MODEL_NAMES:
             continue
 
         node_id = None

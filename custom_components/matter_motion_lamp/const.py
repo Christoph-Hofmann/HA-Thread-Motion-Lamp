@@ -6,7 +6,7 @@ DOMAIN = "matter_motion_lamp"
 MANUFACTURER_ID = 65521
 
 # Supported model names and IDs
-MODEL_NAMES = frozenset({"MotionLamp", "MotionLamp CCT"})
+MODEL_NAMES = frozenset({"MotionLamp", "MotionLamp CCT", "MotionLamp Rotary"})
 MODEL_ID_MIN = 32768
 MODEL_ID_MAX = 32820
 MODEL_IDS_EXTRA = frozenset({8009})
@@ -27,9 +27,9 @@ UPDATE_TARGET_DIR = "/config/updates"
 
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
-# Dimmable-variant model name — the only variant with the runtime Light Count
+# Dimmable-variant model names — the variants with the runtime Light Count
 # feature (not "MotionLamp CCT"). Used to scope the master "All Lights" entity.
-LIGHT_COUNT_MODEL_NAME = "MotionLamp"
+LIGHT_COUNT_MODEL_NAMES = frozenset({"MotionLamp", "MotionLamp Rotary"})
 
 # Official "Matter Server" add-on slug (Home Assistant core add-ons repo).
 # Used for the "Restart Matter Server" button, which calls the hassio
