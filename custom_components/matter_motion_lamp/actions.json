@@ -25,6 +25,20 @@
     "endpoint_id": 1,
     "cluster_id": 3,
     "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 3, "effectVariant": 0}
+  },
+  {
+    "name": "Breathe",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
     "payload": {"effectIdentifier": 1, "effectVariant": 0}
+  },
+  {
+    "name": "Knight Rider",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 4, "effectVariant": 0}
   }
 ]
