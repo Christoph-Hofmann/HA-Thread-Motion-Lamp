@@ -19,5 +19,12 @@
     "cluster_id": 3,
     "command_name": "TriggerEffect",
     "payload": {"effectIdentifier": 11, "effectVariant": 0}
+  },
+  {
+    "name": "Channel Flash",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 11, "effectVariant": 1}
   }
 ]
