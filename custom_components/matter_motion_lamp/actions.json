@@ -40,5 +40,12 @@
     "cluster_id": 3,
     "command_name": "TriggerEffect",
     "payload": {"effectIdentifier": 4, "effectVariant": 0}
+  },
+  {
+    "name": "Color Wave",
+    "endpoint_id": 1,
+    "cluster_id": 3,
+    "command_name": "TriggerEffect",
+    "payload": {"effectIdentifier": 5, "effectVariant": 0}
   }
 ]
