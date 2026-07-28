@@ -30,6 +30,34 @@ _ENTITY_RENAMES: list[dict] = json.loads(
 )
 
 
+def _find_unique_device_name(device_registry, base_name: str, current_device_id: str) -> str:
+    """Return base_name if no *other* device is currently displaying it, else
+    the first free "base_name N" variant (N starting at 1) — e.g. a second
+    "MotionLamp" added to the fabric becomes "MotionLamp 1", a third
+    "MotionLamp 2", etc. Only considers other devices' effective display
+    name (name_by_user if set, else name), so it stays correct as devices
+    get renamed over time.
+    """
+    base_taken = False
+    taken_numbers = set()
+    for other in device_registry.devices.values():
+        if other.id == current_device_id:
+            continue
+        effective = other.name_by_user or other.name
+        if effective == base_name:
+            base_taken = True
+        elif effective and effective.startswith(base_name + " "):
+            suffix = effective[len(base_name) + 1:]
+            if suffix.isdigit():
+                taken_numbers.add(int(suffix))
+    if not base_taken:
+        return base_name
+    n = 1
+    while n in taken_numbers:
+        n += 1
+    return f"{base_name} {n}"
+
+
 def _unique_entity_id(entity_registry, desired_entity_id: str, current_entity_id: str) -> str:
     """Return desired_entity_id, or the first free desired_entity_id_N if it's
     already taken by a *different* entity — e.g. two physical devices that
@@ -96,7 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Both manufacturer AND model must match
         return manufacturer_matches and model_matches
 
-    async def check_and_rename_device(device, entity_registry) -> None:
+    async def check_and_rename_device(device, entity_registry, device_registry) -> None:
         """Check if device matches Matter IDs and rename if needed."""
         _LOGGER.debug("Checking device#1: %s (manufacturer: %s, model: %s, identifiers: %s)",
                       device.name, device.manufacturer, device.model, device.identifiers)
@@ -104,6 +132,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return
 
         _LOGGER.info("Processing target device: %s (ID: %s)", device.name, device.id)
+
+        # De-duplicate the device name — every board reports the same
+        # compile-time product name (e.g. "MotionLamp"), so a second device
+        # of the same variant would otherwise collide in the UI. Never touch
+        # a device the user has already renamed themselves.
+        if device.name_by_user is None and device.name in MODEL_NAMES:
+            unique_name = _find_unique_device_name(device_registry, device.name, device.id)
+            if unique_name != device.name:
+                _LOGGER.info("Renaming device %s → %s (name collision)", device.name, unique_name)
+                device_registry.async_update_device(device.id, name_by_user=unique_name)
 
         # Iterate over all configured entity actions
         for entry in _ENTITY_RENAMES:
@@ -184,7 +222,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return
             device = device_registry.async_get(entity_entry.device_id)
             if device:
-                await check_and_rename_device(device, entity_registry)
+                await check_and_rename_device(device, entity_registry, device_registry)
 
         hass.async_create_task(_delayed_rename())
 
@@ -194,7 +232,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
         for device in device_registry.devices.values():
-            await check_and_rename_device(device, entity_registry)
+            await check_and_rename_device(device, entity_registry, device_registry)
 
     async def async_light_count_state_changed(event) -> None:
         """Restart Matter Server whenever a MotionLamp's light count decreases.
