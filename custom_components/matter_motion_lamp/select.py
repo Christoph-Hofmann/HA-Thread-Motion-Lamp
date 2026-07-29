@@ -94,7 +94,18 @@ class EffectSelectEntity(SelectEntity):
                 }
                 _LOGGER.debug("Node %s: sending effect '%s': %s", self._node_id, option, command)
                 await websocket.send(json.dumps(command))
-                response = json.loads(await asyncio.wait_for(websocket.recv(), timeout=10.0))
+
+                # Wait for the response to *this* request specifically —
+                # matter-server sends an unprompted server-info message the
+                # instant the connection opens, before any response to our
+                # command; a bare single recv() picks that up instead and
+                # (worse) closes the connection right after, aborting the
+                # command before its device-side round trip completes.
+                while True:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    response = json.loads(raw)
+                    if response.get("message_id") == "1":
+                        break
                 _LOGGER.debug("Node %s: effect response: %s", self._node_id, response)
         except Exception as e:
             _LOGGER.error("Node %s: error sending effect '%s': %s", self._node_id, option, e)
