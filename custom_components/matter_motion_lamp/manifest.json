@@ -1,7 +1,7 @@
 {
   "domain": "matter_motion_lamp",
   "name": "Matter Motion Lamp",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "requirements": ["websockets>=10.0"],
   "dependencies": [],
   "after_dependencies": ["matter"],
