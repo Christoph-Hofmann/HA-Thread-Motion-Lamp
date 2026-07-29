@@ -168,18 +168,44 @@ class LedCountNumberEntity(NumberEntity):
         count = int(value)
         try:
             async with websockets.connect(MATTER_SERVER_URL) as websocket:
+                # CurrentLevel is spec-defined as not directly writable —
+                # matter-server rejects a raw write_attribute with
+                # UNSUPPORTED_WRITE (confirmed via a live test against a
+                # real device). Like any Matter dimmable light, it can only
+                # be changed via a LevelControl command; the firmware's own
+                # real lamp brightness already works this way too (see
+                # lamp_set_brightness() reacting to a MoveToLevelWithOnOff
+                # command in the serial log, not a raw attribute write).
                 command = {
                     "message_id": "1",
-                    "command": "write_attribute",
+                    "command": "device_command",
                     "args": {
                         "node_id": self._node_id,
-                        "attribute_path": f"{self._endpoint_id}/{_LEVEL_CONTROL_CLUSTER}/{_CURRENT_LEVEL_ATTR}",
-                        "value": count,
+                        "endpoint_id": self._endpoint_id,
+                        "cluster_id": _LEVEL_CONTROL_CLUSTER,
+                        "command_name": "MoveToLevelWithOnOff",
+                        "payload": {
+                            "level": count,
+                            "transitionTime": 0,
+                            "optionsMask": 0,
+                            "optionsOverride": 0,
+                        },
                     },
                 }
                 _LOGGER.debug("Node %s: setting LED count to %d: %s", self._node_id, count, command)
                 await websocket.send(json.dumps(command))
-                response = json.loads(await asyncio.wait_for(websocket.recv(), timeout=10.0))
+
+                # Wait for the response to *this* request specifically —
+                # matter-server sends an unprompted server-info message
+                # the instant the connection opens, before any response to
+                # our command; a bare single recv() picks that up instead
+                # and (worse) closes the connection right after, aborting
+                # the write before the device-side round trip completes.
+                while True:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    response = json.loads(raw)
+                    if response.get("message_id") == "1":
+                        break
                 _LOGGER.debug("Node %s: set LED count response: %s", self._node_id, response)
         except Exception as e:
             _LOGGER.error("Node %s: error setting LED count: %s", self._node_id, e)
