@@ -31,6 +31,11 @@ MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 # feature (not "MotionLamp CCT"). Used to scope the master "All Lights" entity.
 LIGHT_COUNT_MODEL_NAMES = frozenset({"MotionLamp", "MotionLamp Rotary"})
 
+# WS2812 strip variant — the only one with a physical LED count to configure.
+WS2812_MODEL_NAME = "MotionLamp RGB"
+WS2812_LED_COUNT_MIN = 1
+WS2812_LED_COUNT_MAX = 101  # must match WS2812_STRIP_LED_COUNT in app_priv.h
+
 # Official "Matter Server" add-on slug (Home Assistant core add-ons repo).
 # Used for the "Restart Matter Server" button, which calls the hassio
 # integration's addon_restart service — only works on Supervised/HAOS
