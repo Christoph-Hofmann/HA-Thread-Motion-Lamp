@@ -36,6 +36,16 @@ WS2812_MODEL_NAME = "MotionLamp RGB"
 WS2812_LED_COUNT_MIN = 1
 WS2812_LED_COUNT_MAX = 101  # must match WS2812_STRIP_LED_COUNT in app_priv.h
 
+# Lamp auto-off duration — OnOff::OnTime (cluster 6, attribute 0x4001) on the
+# lamp's own endpoint (always endpoint 1, created first in app_main() before
+# any optional/variable-position endpoints). Applies to every variant.
+# Bounds must match POWER_ONTIME_MIN_S/POWER_ONTIME_MAX_S in app_priv.h.
+LAMP_ONTIME_ENDPOINT_ID = 1
+LAMP_ONTIME_CLUSTER_ID = 6
+LAMP_ONTIME_ATTRIBUTE_ID = 16385
+LAMP_ONTIME_MIN_S = 1
+LAMP_ONTIME_MAX_S = 7200
+
 # Official "Matter Server" add-on slug (Home Assistant core add-ons repo).
 # Used for the "Restart Matter Server" button, which calls the hassio
 # integration's addon_restart service — only works on Supervised/HAOS

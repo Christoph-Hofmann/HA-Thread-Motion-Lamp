@@ -9,6 +9,7 @@ import websockets
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
@@ -17,9 +18,15 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     MATTER_SERVER_URL,
+    MODEL_NAMES,
     WS2812_MODEL_NAME,
     WS2812_LED_COUNT_MIN,
     WS2812_LED_COUNT_MAX,
+    LAMP_ONTIME_ENDPOINT_ID,
+    LAMP_ONTIME_CLUSTER_ID,
+    LAMP_ONTIME_ATTRIBUTE_ID,
+    LAMP_ONTIME_MIN_S,
+    LAMP_ONTIME_MAX_S,
     SCAN_INTERVAL as _SCAN_INTERVAL_SECONDS,
 )
 from .sensor import _node_id_from_matter_identifier
@@ -41,11 +48,11 @@ _CURRENT_LEVEL_ATTR = 0
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up one LED Count number per WS2812 strip MotionLamp device."""
-    entities: list[LedCountNumberEntity] = []
+    """Set up the LED Count and Lamp On Time number entities."""
+    entities: list[NumberEntity] = []
 
     for device in dr.async_get(hass).devices.values():
-        if device.manufacturer != "Espressif" or device.model != WS2812_MODEL_NAME:
+        if device.manufacturer != "Espressif" or device.model not in MODEL_NAMES:
             continue
 
         node_id = None
@@ -58,7 +65,10 @@ async def async_setup_entry(
             _LOGGER.warning("Could not extract node_id for device %s", device.name)
             continue
 
-        entities.append(LedCountNumberEntity(node_id, DeviceInfo(identifiers=device.identifiers)))
+        device_info = DeviceInfo(identifiers=device.identifiers)
+        if device.model == WS2812_MODEL_NAME:
+            entities.append(LedCountNumberEntity(node_id, device_info))
+        entities.append(LampOnTimeNumberEntity(node_id, device_info))
 
     async_add_entities(entities, update_before_add=True)
 
@@ -212,4 +222,111 @@ class LedCountNumberEntity(NumberEntity):
             return
 
         self._attr_native_value = count
+        self.async_write_ha_state()
+
+
+class LampOnTimeNumberEntity(NumberEntity):
+    """How long the lamp stays on before auto-off.
+
+    Backed by the standard OnOff::OnTime attribute (cluster 6, 0x4001) on
+    the lamp's own endpoint — always endpoint 1, the first endpoint created
+    in app_main(), unlike the LED Count endpoint whose position depends on
+    which optional I2C sensors a given board has. OnTime is a genuinely
+    directly-writable standard attribute, so this uses write_attribute
+    directly rather than a command (contrast LED Count's CurrentLevel,
+    which needs MoveToLevelWithOnOff since LevelControl attributes aren't
+    directly writable).
+    """
+
+    _attr_native_min_value = LAMP_ONTIME_MIN_S
+    _attr_native_max_value = LAMP_ONTIME_MAX_S
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:timer-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, node_id: int, device_info: DeviceInfo) -> None:
+        self._node_id = node_id
+        self._attr_unique_id = f"matter_lamp_ontime_{node_id}"
+        self._attr_name = "Lamp On Time"
+        self._attr_device_info = device_info
+        self._attr_native_value = None
+        self._available = False
+        self._attribute_path = f"{LAMP_ONTIME_ENDPOINT_ID}/{LAMP_ONTIME_CLUSTER_ID}/{LAMP_ONTIME_ATTRIBUTE_ID}"
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def available(self):
+        return self._available
+
+    async def async_update(self) -> None:
+        try:
+            async with websockets.connect(MATTER_SERVER_URL) as websocket:
+                await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
+
+                while True:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    msg = json.loads(raw)
+                    if msg.get("message_id") == "1":
+                        break
+
+                for node in msg.get("result", []):
+                    if node.get("node_id") != self._node_id:
+                        continue
+                    value = node.get("attributes", {}).get(self._attribute_path)
+                    if value is None:
+                        self._available = False
+                        _LOGGER.warning("Node %s: OnTime attribute not found", self._node_id)
+                        return
+                    self._attr_native_value = min(max(int(value), LAMP_ONTIME_MIN_S), LAMP_ONTIME_MAX_S)
+                    self._available = True
+                    return
+
+                self._available = False
+                _LOGGER.warning("Node %s not found in start_listening response", self._node_id)
+
+        except websockets.exceptions.WebSocketException as e:
+            self._available = False
+            _LOGGER.error("Node %s: WebSocket error: %s", self._node_id, e)
+        except asyncio.TimeoutError:
+            self._available = False
+            _LOGGER.error("Node %s: timeout waiting for response", self._node_id)
+        except json.JSONDecodeError as e:
+            self._available = False
+            _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
+
+    async def async_set_native_value(self, value: float) -> None:
+        seconds = int(value)
+        try:
+            async with websockets.connect(MATTER_SERVER_URL) as websocket:
+                command = {
+                    "message_id": "1",
+                    "command": "write_attribute",
+                    "args": {
+                        "node_id": self._node_id,
+                        "attribute_path": self._attribute_path,
+                        "value": seconds,
+                    },
+                }
+                _LOGGER.debug("Node %s: setting lamp on-time to %ds: %s", self._node_id, seconds, command)
+                await websocket.send(json.dumps(command))
+
+                # Wait for the response to *this* request specifically — see
+                # LedCountNumberEntity.async_set_native_value() for why a
+                # bare single recv() isn't safe here.
+                while True:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    response = json.loads(raw)
+                    if response.get("message_id") == "1":
+                        break
+                _LOGGER.debug("Node %s: set lamp on-time response: %s", self._node_id, response)
+        except Exception as e:
+            _LOGGER.error("Node %s: error setting lamp on-time: %s", self._node_id, e)
+            return
+
+        self._attr_native_value = seconds
         self.async_write_ha_state()
