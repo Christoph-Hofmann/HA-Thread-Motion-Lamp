@@ -43,7 +43,7 @@ WS2812_LED_COUNT_MAX = 101  # must match WS2812_STRIP_LED_COUNT in app_priv.h
 LAMP_ONTIME_ENDPOINT_ID = 1
 LAMP_ONTIME_CLUSTER_ID = 6
 LAMP_ONTIME_ATTRIBUTE_ID = 16385
-LAMP_ONTIME_MIN_S = 1
+LAMP_ONTIME_MIN_S = 10
 LAMP_ONTIME_MAX_S = 7200
 
 # Official "Matter Server" add-on slug (Home Assistant core add-ons repo).
