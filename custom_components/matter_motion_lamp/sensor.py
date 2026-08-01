@@ -1,4 +1,4 @@
-"""Sensor platform for Matter Uptime."""
+"""Sensor platform for Matter Uptime and the optional LD2410 presence sensor."""
 
 import asyncio
 import json
@@ -28,6 +28,24 @@ SCAN_INTERVAL = timedelta(seconds=_SCAN_INTERVAL_SECONDS)
 
 _LOGGER = logging.getLogger(__name__)
 
+# HLK-LD2410C mmWave presence sensor — optional, not every MotionLamp has
+# one wired up. Its five numeric values live on a vendor-specific cluster
+# (moving/still distance+energy, overall detection distance) rather than
+# any standard Matter cluster — see LD2410_DATA_CLUSTER_ID in this
+# project's firmware (app_priv.h). Its endpoint ID isn't fixed (it's
+# appended after whatever optional sensors a given board already has), so
+# it's located per-device by checking which endpoint actually has this
+# cluster, not by a hardcoded path.
+_LD2410_DATA_CLUSTER = 0xFFF1FC10
+_LD2410_SENSORS = [
+    # (attribute_id, name, unit, icon)
+    (0, "Moving Distance", "cm", "mdi:radar"),
+    (1, "Moving Energy", "%", "mdi:radar"),
+    (2, "Still Distance", "cm", "mdi:radar"),
+    (3, "Still Energy", "%", "mdi:radar"),
+    (4, "Detection Distance", "cm", "mdi:radar"),
+]
+
 
 def _node_id_from_matter_identifier(value: str) -> int | None:
     """Extract numeric node ID from a Matter device identifier string.
@@ -50,13 +68,43 @@ def _format_uptime(seconds: int) -> str:
     return f"{days}d {hours}h {minutes}m"
 
 
+async def _discover_ld2410_endpoints(node_ids: list[int]) -> dict[int, int]:
+    """One-shot check: which of the given nodes actually have the LD2410
+    vendor-specific data cluster, and on which endpoint. Devices without
+    the sensor simply won't be in the returned dict.
+    """
+    result: dict[int, int] = {}
+    try:
+        async with websockets.connect(MATTER_SERVER_URL) as websocket:
+            await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
+            while True:
+                raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                msg = json.loads(raw)
+                if msg.get("message_id") == "1":
+                    break
+            for node in msg.get("result", []):
+                node_id = node.get("node_id")
+                if node_id not in node_ids:
+                    continue
+                for key in node.get("attributes", {}):
+                    parts = key.split("/")
+                    if len(parts) == 3 and parts[1] == str(_LD2410_DATA_CLUSTER):
+                        result[node_id] = int(parts[0])
+                        break
+    except Exception as e:
+        _LOGGER.error("Error discovering LD2410 endpoints: %s", e)
+    return result
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up one UpTime sensor per MotionLamp device."""
-    entities: list[MatterUptimeSensor] = []
+    """Set up one UpTime sensor per MotionLamp device, plus LD2410 sensors
+    for whichever devices actually have that sensor wired up."""
+    entities: list[SensorEntity] = []
+    ld2410_candidates: list[tuple[int, DeviceInfo]] = []
 
     for device in dr.async_get(hass).devices.values():
         if device.manufacturer != "Espressif" or device.model not in MODEL_NAMES:
@@ -72,7 +120,20 @@ async def async_setup_entry(
             _LOGGER.warning("Could not extract node_id for device %s", device.name)
             continue
 
-        entities.append(MatterUptimeSensor(node_id, DeviceInfo(identifiers=device.identifiers)))
+        device_info = DeviceInfo(identifiers=device.identifiers)
+        entities.append(MatterUptimeSensor(node_id, device_info))
+        ld2410_candidates.append((node_id, device_info))
+
+    if ld2410_candidates:
+        ld2410_endpoints = await _discover_ld2410_endpoints([nid for nid, _ in ld2410_candidates])
+        for node_id, device_info in ld2410_candidates:
+            endpoint_id = ld2410_endpoints.get(node_id)
+            if endpoint_id is None:
+                continue
+            for attribute_id, name, unit, icon in _LD2410_SENSORS:
+                entities.append(
+                    LD2410ValueSensor(node_id, endpoint_id, attribute_id, name, unit, icon, device_info)
+                )
 
     async_add_entities(entities, update_before_add=True)
 
@@ -153,3 +214,78 @@ class MatterUptimeSensor(SensorEntity):
         except json.JSONDecodeError as e:
             _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
             return None
+
+
+class LD2410ValueSensor(SensorEntity):
+    """One of the HLK-LD2410C's numeric values (distance/energy).
+
+    Backed by a vendor-specific cluster on a dedicated endpoint — see
+    _LD2410_DATA_CLUSTER above for why (no standard Matter cluster fits
+    these values, and reusing Temperature/Pressure/Humidity would clash
+    with real sensors of those types on the same device).
+    """
+
+    def __init__(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        attribute_id: int,
+        name: str,
+        unit: str,
+        icon: str,
+        device_info: DeviceInfo,
+    ) -> None:
+        self._node_id = node_id
+        self._endpoint_id = endpoint_id
+        self._attribute_id = attribute_id
+        self._attr_unique_id = f"matter_ld2410_{node_id}_{attribute_id}"
+        self._attr_name = name
+        self._attr_native_unit_of_measurement = unit
+        self._attr_icon = icon
+        self._attr_device_info = device_info
+        self._attr_native_value = None
+        self._available = False
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def available(self):
+        return self._available
+
+    async def async_update(self) -> None:
+        attribute_key = f"{self._endpoint_id}/{_LD2410_DATA_CLUSTER}/{self._attribute_id}"
+        try:
+            async with websockets.connect(MATTER_SERVER_URL) as websocket:
+                await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
+
+                while True:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    msg = json.loads(raw)
+                    if msg.get("message_id") == "1":
+                        break
+
+                for node in msg.get("result", []):
+                    if node.get("node_id") == self._node_id:
+                        value = node.get("attributes", {}).get(attribute_key)
+                        if value is not None:
+                            self._attr_native_value = value
+                            self._available = True
+                        else:
+                            self._available = False
+                            _LOGGER.warning("Node %s: attribute %s not found", self._node_id, attribute_key)
+                        return
+
+                self._available = False
+                _LOGGER.warning("Node %s not found in start_listening response", self._node_id)
+
+        except websockets.exceptions.WebSocketException as e:
+            self._available = False
+            _LOGGER.error("Node %s: WebSocket error: %s", self._node_id, e)
+        except asyncio.TimeoutError:
+            self._available = False
+            _LOGGER.error("Node %s: timeout waiting for response", self._node_id)
+        except json.JSONDecodeError as e:
+            self._available = False
+            _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
