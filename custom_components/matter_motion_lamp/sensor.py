@@ -44,6 +44,13 @@ _LD2410_SENSORS = [
     (2, "Still Distance", "cm", "mdi:radar"),
     (3, "Still Energy", "%", "mdi:radar"),
     (4, "Detection Distance", "cm", "mdi:radar"),
+    # Set once per fresh gate-threshold detection, not repeated while the
+    # hold timer keeps it occupied — see app_driver.cpp's
+    # ld2410_parse_engineering_payload(). Trigger Type: 0 = motion, 1 = still.
+    (5, "Trigger Gate", None, "mdi:radar"),
+    (6, "Trigger Type", None, "mdi:radar"),
+    (7, "Trigger Energy", "%", "mdi:radar"),
+    (8, "Trigger Threshold", "%", "mdi:radar"),
 ]
 
 
