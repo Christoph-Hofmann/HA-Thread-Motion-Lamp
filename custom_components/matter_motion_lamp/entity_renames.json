@@ -28,5 +28,16 @@
     "desired_name": "Pressure",
     "unit" : "hPa",
     "precision" : 0
+  },
+  {
+    "source_entity_id": [
+      "light.terrasse_leuchte_9",
+      "light.motionlamp_rgb_leuchte_9",
+      "button.motionlamp_rgb_identifizieren_9",
+      "number.motionlamp_rgb_ein_level_9",
+      "number.motionlamp_rgb_wiedereinschalt_level_9",
+      "select.motionlamp_rgb_wiedereinschaltverhalten_9"
+    ],
+    "action": "delete"
   }
 ]
