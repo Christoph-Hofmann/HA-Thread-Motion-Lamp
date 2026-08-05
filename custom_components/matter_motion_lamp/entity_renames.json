@@ -39,5 +39,16 @@
       "select.motionlamp_rgb_wiedereinschaltverhalten_9"
     ],
     "action": "delete"
+  },
+  {
+    "source_entity_id": [
+      "switch.terrasse_schalter_4",
+      "switch.motionlamp_schalter_4","switch.motionlamp_schalter_4_2",
+      "switch.motionlamp_cct_schalter_4","switch.motionlamp_cct_schalter_4_2",
+      "switch.motionlamp_rotary_schalter_4","switch.motionlamp_rotary_schalter_4_2",
+      "switch.motionlamp_rgb_schalter_4","switch.motionlamp_rgb_schalter_4_2"
+    ],
+    "desired_entity_id": "switch.motionlamp_power_on_motion",
+    "desired_name": "Power on Motion"
   }
 ]
