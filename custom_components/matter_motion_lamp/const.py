@@ -27,10 +27,6 @@ UPDATE_TARGET_DIR = "/config/updates"
 
 MATTER_SERVER_URL = "ws://homeassistant.local:5580/ws"
 
-# Dimmable-variant model names — the variants with the runtime Light Count
-# feature (not "MotionLamp CCT"). Used to scope the master "All Lights" entity.
-LIGHT_COUNT_MODEL_NAMES = frozenset({"MotionLamp", "MotionLamp Rotary"})
-
 # WS2812 strip variant — the only one with a physical LED count to configure.
 WS2812_MODEL_NAME = "MotionLamp RGB"
 WS2812_LED_COUNT_MIN = 1
