@@ -9,11 +9,11 @@ import websockets
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 
 from .const import (
     MATTER_SERVER_URL,
@@ -109,8 +109,9 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up one UpTime sensor per MotionLamp device, plus LD2410 sensors
-    for whichever devices actually have that sensor wired up."""
+    """Set up one UpTime sensor plus mirrored Pressure/Humidity sensors per
+    MotionLamp device, plus LD2410 sensors for whichever devices actually
+    have that sensor wired up."""
     entities: list[SensorEntity] = []
     ld2410_candidates: list[tuple[int, DeviceInfo]] = []
 
@@ -130,6 +131,8 @@ async def async_setup_entry(
 
         device_info = child_device_info(device)
         entities.append(MatterUptimeSensor(node_id, device_info))
+        entities.append(MirroredSensorEntity(hass, device.id, "pressure", node_id, device_info))
+        entities.append(MirroredSensorEntity(hass, device.id, "humidity", node_id, device_info))
         ld2410_candidates.append((node_id, device_info))
 
     if ld2410_candidates:
@@ -297,3 +300,117 @@ class LD2410ValueSensor(SensorEntity):
         except json.JSONDecodeError as e:
             self._available = False
             _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
+
+
+class MirroredSensorEntity(SensorEntity):
+    """Mirrors one HA-core Matter sensor entity onto this integration's child device.
+
+    HA 2026.8 stopped merging entities across integrations' devices (see
+    device_link.py), so standard-cluster sensors HA core's Matter
+    integration creates (temperature/pressure/humidity/...) only show up
+    on the separate "Matter" device unless explicitly mirrored — same
+    pattern as MasterLightEntity (light.py) and AnimationSelectEntity
+    (select.py), just for a plain read-only value instead of a control.
+
+    Located by device_class on the *Matter* device (not this integration's
+    own child device — the source entity lives on the other one), and
+    re-resolved on entity-registry changes since HA-core's own sensor
+    might not exist yet the moment this integration's platform loads.
+    """
+
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        matter_device_id: str,
+        device_class: str,
+        node_id: int,
+        device_info: DeviceInfo,
+    ) -> None:
+        self._hass = hass
+        self._matter_device_id = matter_device_id
+        self._device_class = device_class
+        self._attr_unique_id = f"matter_mirror_{device_class}_{node_id}"
+        self._attr_name = device_class.replace("_", " ").title()
+        self._attr_device_info = device_info
+        self._attr_native_value = None
+        self._source_entity_id: str | None = None
+        self._unsub_state_change = None
+        self._available = False
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def available(self):
+        return self._available
+
+    def _find_source_entity(self) -> str | None:
+        registry = er.async_get(self._hass)
+        for entry in registry.entities.values():
+            if entry.device_id != self._matter_device_id or entry.domain != "sensor":
+                continue
+            state = self._hass.states.get(entry.entity_id)
+            dc = (state.attributes.get("device_class") if state else None) or entry.original_device_class
+            if dc == self._device_class:
+                return entry.entity_id
+        return None
+
+    def _resubscribe(self) -> None:
+        if self._unsub_state_change:
+            self._unsub_state_change()
+            self._unsub_state_change = None
+        self._source_entity_id = self._find_source_entity()
+        if self._source_entity_id:
+            self._unsub_state_change = async_track_state_change_event(
+                self._hass, [self._source_entity_id], self._source_state_changed
+            )
+
+    async def async_added_to_hass(self) -> None:
+        self._resubscribe()
+        self._update_from_source()
+
+        self.async_on_remove(
+            self._hass.bus.async_listen(
+                er.EVENT_ENTITY_REGISTRY_UPDATED, self._handle_registry_update
+            )
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_state_change:
+            self._unsub_state_change()
+            self._unsub_state_change = None
+
+    async def _handle_registry_update(self, event) -> None:
+        # Only worth re-checking if we don't have a source yet, or the
+        # event is about the entity we're already tracking.
+        entity_id = event.data.get("entity_id", "")
+        if self._source_entity_id and entity_id != self._source_entity_id:
+            return
+        if not entity_id.startswith("sensor."):
+            return
+
+        self._resubscribe()
+        self._update_from_source()
+        self.async_write_ha_state()
+
+    @callback
+    def _source_state_changed(self, event) -> None:
+        self._update_from_source()
+        self.async_write_ha_state()
+
+    @callback
+    def _update_from_source(self) -> None:
+        state = self._hass.states.get(self._source_entity_id) if self._source_entity_id else None
+        if state is None or state.state in ("unknown", "unavailable"):
+            self._available = False
+            return
+
+        self._available = True
+        self._attr_native_value = state.state
+        self._attr_native_unit_of_measurement = state.attributes.get("unit_of_measurement")
+        self._attr_device_class = state.attributes.get("device_class")
+        self._attr_state_class = state.attributes.get("state_class")
+        self._attr_icon = state.attributes.get("icon")
