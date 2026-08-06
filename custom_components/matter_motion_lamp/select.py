@@ -15,6 +15,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import ACTIONS_FILE, MATTER_SERVER_URL, MODEL_NAMES
+from .device_link import child_device_info
 from .sensor import _node_id_from_matter_identifier
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ async def async_setup_entry(
             _LOGGER.warning("Could not extract node_id for device %s", device.name)
             continue
 
-        entities.append(EffectSelectEntity(node_id, DeviceInfo(identifiers=device.identifiers)))
+        entities.append(EffectSelectEntity(node_id, child_device_info(device)))
 
     async_add_entities(entities)
 

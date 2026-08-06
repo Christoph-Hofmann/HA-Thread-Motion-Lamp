@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import LIGHT_COUNT_MODEL_NAMES
+from .device_link import child_device_info
 from .sensor import _node_id_from_matter_identifier
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ async def async_setup_entry(
             continue
 
         entities.append(
-            MasterLightEntity(hass, device.id, node_id, DeviceInfo(identifiers=device.identifiers))
+            MasterLightEntity(hass, device.id, node_id, child_device_info(device))
         )
 
     async_add_entities(entities)

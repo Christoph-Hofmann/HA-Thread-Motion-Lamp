@@ -29,6 +29,7 @@ from .const import (
     LAMP_ONTIME_MAX_S,
     SCAN_INTERVAL as _SCAN_INTERVAL_SECONDS,
 )
+from .device_link import child_device_info
 from .sensor import _node_id_from_matter_identifier
 
 SCAN_INTERVAL = timedelta(seconds=_SCAN_INTERVAL_SECONDS)
@@ -65,7 +66,7 @@ async def async_setup_entry(
             _LOGGER.warning("Could not extract node_id for device %s", device.name)
             continue
 
-        device_info = DeviceInfo(identifiers=device.identifiers)
+        device_info = child_device_info(device)
         if device.model == WS2812_MODEL_NAME:
             entities.append(LedCountNumberEntity(node_id, device_info))
         entities.append(LampOnTimeNumberEntity(node_id, device_info))

@@ -23,6 +23,7 @@ from .const import (
     ATTRIBUTE_ID,
     SCAN_INTERVAL as _SCAN_INTERVAL_SECONDS,
 )
+from .device_link import child_device_info
 
 SCAN_INTERVAL = timedelta(seconds=_SCAN_INTERVAL_SECONDS)
 
@@ -127,7 +128,7 @@ async def async_setup_entry(
             _LOGGER.warning("Could not extract node_id for device %s", device.name)
             continue
 
-        device_info = DeviceInfo(identifiers=device.identifiers)
+        device_info = child_device_info(device)
         entities.append(MatterUptimeSensor(node_id, device_info))
         ld2410_candidates.append((node_id, device_info))
 
