@@ -109,9 +109,9 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up one UpTime sensor plus mirrored Pressure/Humidity sensors per
-    MotionLamp device, plus LD2410 sensors for whichever devices actually
-    have that sensor wired up."""
+    """Set up one UpTime sensor plus mirrored Pressure/Humidity/Temperature
+    sensors per MotionLamp device, plus LD2410 sensors for whichever
+    devices actually have that sensor wired up."""
     entities: list[SensorEntity] = []
     ld2410_candidates: list[tuple[int, DeviceInfo]] = []
 
@@ -133,6 +133,7 @@ async def async_setup_entry(
         entities.append(MatterUptimeSensor(node_id, device_info))
         entities.append(MirroredSensorEntity(hass, device.id, "pressure", node_id, device_info))
         entities.append(MirroredSensorEntity(hass, device.id, "humidity", node_id, device_info))
+        entities.append(MirroredSensorEntity(hass, device.id, "temperature", node_id, device_info))
         ld2410_candidates.append((node_id, device_info))
 
     if ld2410_candidates:
