@@ -1,0 +1,27 @@
+name: MotionLamp OTA Bridge
+version: "1.0.0"
+slug: motionlamp_ota_bridge
+description: Pulls MotionLamp firmware updates into the Matter Server add-on's OTA provider directory and restarts it when new versions are found.
+url: https://github.com/Christoph-Hofmann/HA-Thread-Motion-Lamp
+arch:
+  - aarch64
+  - amd64
+  - armv7
+  - armhf
+  - i386
+startup: application
+boot: auto
+init: false
+hassio_api: true
+hassio_role: manager
+map:
+  - type: all_app_configs
+    read_only: false
+options:
+  update_server_url: "http://commisioner.its-hofmann.lo:5000/updates"
+  matter_server_slug: "core_matter_server"
+  check_interval_hours: 12
+schema:
+  update_server_url: url
+  matter_server_slug: str
+  check_interval_hours: int(1,168)
