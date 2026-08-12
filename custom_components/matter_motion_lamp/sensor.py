@@ -1,6 +1,8 @@
 """Sensor platform for Matter Uptime and the optional LD2410 presence sensor."""
 
 import asyncio
+import base64
+import ipaddress
 import json
 import logging
 from datetime import timedelta
@@ -109,9 +111,10 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up one UpTime sensor plus mirrored Pressure/Humidity/Temperature
-    sensors per MotionLamp device, plus LD2410 sensors for whichever
-    devices actually have that sensor wired up."""
+    """Set up one UpTime sensor, one IPv6 Address sensor, plus mirrored
+    Pressure/Humidity/Temperature sensors per MotionLamp device, plus
+    LD2410 sensors for whichever devices actually have that sensor
+    wired up."""
     entities: list[SensorEntity] = []
     ld2410_candidates: list[tuple[int, DeviceInfo]] = []
 
@@ -134,6 +137,7 @@ async def async_setup_entry(
         entities.append(MirroredSensorEntity(hass, device.id, "pressure", node_id, device_info))
         entities.append(MirroredSensorEntity(hass, device.id, "humidity", node_id, device_info))
         entities.append(MirroredSensorEntity(hass, device.id, "temperature", node_id, device_info))
+        entities.append(IPv6AddressSensor(node_id, device_info))
         ld2410_candidates.append((node_id, device_info))
 
     if ld2410_candidates:
@@ -415,3 +419,106 @@ class MirroredSensorEntity(SensorEntity):
         self._attr_device_class = state.attributes.get("device_class")
         self._attr_state_class = state.attributes.get("state_class")
         self._attr_icon = state.attributes.get("icon")
+
+
+class IPv6AddressSensor(SensorEntity):
+    """Shows the device's Thread-assigned IPv6 address(es).
+
+    Backed by the standard GeneralDiagnostics::NetworkInterfaces
+    attribute (endpoint 0, cluster 51, attribute 0) — every Matter
+    device has to expose this, no vendor cluster needed. Each interface
+    entry's field "6" is a list of that interface's IPv6 addresses,
+    each base64-encoded raw 16 bytes (TLV octstr), not a string.
+
+    A Thread device normally has *three* addresses on this interface:
+    link-local (fe80::/10, not useful off-link), the Thread mesh-local
+    ML-EID, and the off-mesh-routable (OMR) address actually reachable
+    from the rest of the network (e.g. for this project's HTTP sensor
+    API — see app_driver_http_server_init() in the firmware). There's no
+    reliable way to tell mesh-local and OMR apart from the address bytes
+    alone (both are ULAs, fd00::/8, indistinguishable without knowing
+    the Border Router's configured prefixes) — matter-server's own API
+    doesn't separately expose which address it's actually using for its
+    live session either (checked: start_listening's per-node result has
+    no address/session field, only this same static attribute). The
+    state is therefore a heuristic "primary" guess (last non-link-local
+    address — empirically the OMR address came after mesh-local in
+    NetworkInterfaces' list on a real device; not a protocol guarantee),
+    with the full list always available as an attribute for when the
+    guess isn't the one you actually need.
+    """
+
+    _attr_icon = "mdi:ip-network"
+    _NETWORK_INTERFACES_ATTR = "0/51/0"  # ep0, GeneralDiagnostics(51), NetworkInterfaces(0)
+
+    def __init__(self, node_id: int, device_info: DeviceInfo) -> None:
+        self._node_id = node_id
+        self._attr_unique_id = f"matter_ipv6_{node_id}"
+        self._attr_name = "IPv6 Address"
+        self._attr_device_info = device_info
+        self._attr_native_value = None
+        self._attr_extra_state_attributes: dict = {}
+        self._available = False
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def available(self):
+        return self._available
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
+
+    @staticmethod
+    def _decode_addresses(interfaces) -> list[str]:
+        addresses = []
+        for iface in interfaces or []:
+            for b64_addr in iface.get("6", []):
+                try:
+                    addresses.append(str(ipaddress.IPv6Address(base64.b64decode(b64_addr))))
+                except (ValueError, TypeError):
+                    continue
+        return addresses
+
+    async def async_update(self) -> None:
+        try:
+            async with websockets.connect(MATTER_SERVER_URL) as websocket:
+                await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
+
+                while True:
+                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                    msg = json.loads(raw)
+                    if msg.get("message_id") == "1":
+                        break
+
+                for node in msg.get("result", []):
+                    if node.get("node_id") != self._node_id:
+                        continue
+                    interfaces = node.get("attributes", {}).get(self._NETWORK_INTERFACES_ATTR)
+                    addresses = self._decode_addresses(interfaces)
+                    if not addresses:
+                        self._available = False
+                        _LOGGER.warning("Node %s: no IPv6 addresses found", self._node_id)
+                        return
+
+                    routable = [a for a in addresses if not a.startswith("fe80")]
+                    self._attr_native_value = routable[-1] if routable else addresses[0]
+                    self._attr_extra_state_attributes = {"all_ipv6_addresses": addresses}
+                    self._available = True
+                    return
+
+                self._available = False
+                _LOGGER.warning("Node %s not found in start_listening response", self._node_id)
+
+        except websockets.exceptions.WebSocketException as e:
+            self._available = False
+            _LOGGER.error("Node %s: WebSocket error: %s", self._node_id, e)
+        except asyncio.TimeoutError:
+            self._available = False
+            _LOGGER.error("Node %s: timeout waiting for response", self._node_id)
+        except json.JSONDecodeError as e:
+            self._available = False
+            _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
