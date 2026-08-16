@@ -94,8 +94,37 @@ class EffectSelectEntity(SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         if option == self._IDLE:
+            # StopEffect (0xFF) — a real spec-defined Identify effect
+            # identifier, not a made-up sentinel — tells the firmware to
+            # cancel whatever Blink/Flash/Channel Blink/Channel Flash is
+            # currently running instead of waiting out its full
+            # effect_length_s. Same endpoint/cluster/command shape as the
+            # real effects above, just a different payload.
+            command = {
+                "message_id": "1",
+                "command": "device_command",
+                "args": {
+                    "node_id": self._node_id,
+                    "endpoint_id": 1,
+                    "cluster_id": 3,
+                    "command_name": "TriggerEffect",
+                    "payload": {"effectIdentifier": 255, "effectVariant": 0},
+                },
+            }
             self._current = self._IDLE
             self.async_write_ha_state()
+            try:
+                async with websockets.connect(MATTER_SERVER_URL) as websocket:
+                    _LOGGER.debug("Node %s: sending StopEffect: %s", self._node_id, command)
+                    await websocket.send(json.dumps(command))
+                    while True:
+                        raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                        response = json.loads(raw)
+                        if response.get("message_id") == "1":
+                            break
+                    _LOGGER.debug("Node %s: StopEffect response: %s", self._node_id, response)
+            except Exception as e:
+                _LOGGER.error("Node %s: error sending StopEffect: %s", self._node_id, e)
             return
 
         action = next((a for a in _ACTIONS if a["name"] == option), None)
