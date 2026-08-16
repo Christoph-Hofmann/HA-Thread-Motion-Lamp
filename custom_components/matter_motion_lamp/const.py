@@ -42,6 +42,15 @@ LAMP_ONTIME_ATTRIBUTE_ID = 16385
 LAMP_ONTIME_MIN_S = 10
 LAMP_ONTIME_MAX_S = 7200
 
+# Effect (Blink/Flash/Channel Blink/Channel Flash) auto-stop duration —
+# plain NVS-backed app state, no Matter attribute of its own (see
+# EFFECT_TIMEOUT_NVS_NS in app_driver.cpp), so it's only reachable over the
+# firmware's own HTTP REST API (GET /sensors, POST /config/effect_length) at
+# the device's IPv6 address, not via Matter/matter-server. Bounds must match
+# EFFECT_TIMEOUT_MIN_S/MAX_S in app_priv.h.
+EFFECT_LENGTH_MIN_S = 1
+EFFECT_LENGTH_MAX_S = 300
+
 # Official "Matter Server" add-on slug (Home Assistant core add-ons repo).
 # Used for the "Restart Matter Server" button, which calls the hassio
 # integration's addon_restart service — only works on Supervised/HAOS

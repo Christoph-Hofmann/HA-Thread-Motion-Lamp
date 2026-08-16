@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import timedelta
 
+import aiohttp
 import websockets
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -12,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -27,10 +29,12 @@ from .const import (
     LAMP_ONTIME_ATTRIBUTE_ID,
     LAMP_ONTIME_MIN_S,
     LAMP_ONTIME_MAX_S,
+    EFFECT_LENGTH_MIN_S,
+    EFFECT_LENGTH_MAX_S,
     SCAN_INTERVAL as _SCAN_INTERVAL_SECONDS,
 )
 from .device_link import child_device_info
-from .sensor import _node_id_from_matter_identifier
+from .sensor import _node_id_from_matter_identifier, async_resolve_device_ipv6
 
 SCAN_INTERVAL = timedelta(seconds=_SCAN_INTERVAL_SECONDS)
 
@@ -70,6 +74,7 @@ async def async_setup_entry(
         if device.model == WS2812_MODEL_NAME:
             entities.append(LedCountNumberEntity(node_id, device_info))
         entities.append(LampOnTimeNumberEntity(node_id, device_info))
+        entities.append(EffectLengthNumberEntity(hass, node_id, device_info))
 
     async_add_entities(entities, update_before_add=True)
 
@@ -330,4 +335,96 @@ class LampOnTimeNumberEntity(NumberEntity):
             return
 
         self._attr_native_value = seconds
+        self.async_write_ha_state()
+
+
+class EffectLengthNumberEntity(NumberEntity):
+    """How long Blink/Flash/Channel Blink/Channel Flash run before
+    auto-stopping (or being cut short via the Effect select's idle option).
+
+    Unlike LED Count/Lamp On Time above, this isn't a Matter attribute at
+    all — effect_length_s is plain NVS-backed app state with no cluster of
+    its own (see EFFECT_TIMEOUT_NVS_NS in app_driver.cpp), only reachable
+    over the firmware's own HTTP REST API. Talks straight to the device's
+    IPv6 address (resolved via the same heuristic as IPv6AddressSensor —
+    see async_resolve_device_ipv6()), so this entity goes unavailable if
+    that address isn't currently reachable, independent of whether the
+    device is otherwise online on the Matter fabric.
+    """
+
+    _attr_native_min_value = EFFECT_LENGTH_MIN_S
+    _attr_native_max_value = EFFECT_LENGTH_MAX_S
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:timer-cog-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, hass: HomeAssistant, node_id: int, device_info: DeviceInfo) -> None:
+        self._hass = hass
+        self._node_id = node_id
+        self._attr_unique_id = f"matter_effect_length_{node_id}"
+        self._attr_name = "Effect Length"
+        self._attr_device_info = device_info
+        self._attr_native_value = None
+        self._available = False
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def available(self):
+        return self._available
+
+    async def async_update(self) -> None:
+        try:
+            ip, _ = await async_resolve_device_ipv6(self._node_id)
+            if ip is None:
+                self._available = False
+                _LOGGER.warning("Node %s: no IPv6 address to reach HTTP API", self._node_id)
+                return
+
+            session = async_get_clientsession(self._hass)
+            async with session.get(
+                f"http://[{ip}]/sensors", timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                data = await resp.json(content_type=None)
+
+            value = data.get("lamp", {}).get("effect_length_s")
+            if value is None:
+                self._available = False
+                _LOGGER.warning("Node %s: effect_length_s missing from /sensors", self._node_id)
+                return
+            self._attr_native_value = value
+            self._available = True
+        except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
+            self._available = False
+            _LOGGER.error("Node %s: error reading effect length over HTTP: %s", self._node_id, e)
+
+    async def async_set_native_value(self, value: float) -> None:
+        ip, _ = await async_resolve_device_ipv6(self._node_id)
+        if ip is None:
+            _LOGGER.error("Node %s: cannot set effect length, no IPv6 address known", self._node_id)
+            return
+
+        seconds = int(value)
+        try:
+            session = async_get_clientsession(self._hass)
+            async with session.post(
+                f"http://[{ip}]/config/effect_length",
+                json={"seconds": seconds},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                # Firmware clamps out-of-range values and echoes back what
+                # it actually stored — trust that over the value we sent.
+                data = await resp.json(content_type=None)
+                _LOGGER.debug("Node %s: set effect length to %ds, response: %s", self._node_id, seconds, data)
+                stored = data.get("seconds", seconds)
+        except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
+            _LOGGER.error("Node %s: error setting effect length: %s", self._node_id, e)
+            return
+
+        self._attr_native_value = stored
+        self._available = True
         self.async_write_ha_state()

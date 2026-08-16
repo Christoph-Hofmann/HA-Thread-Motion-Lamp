@@ -421,6 +421,46 @@ class MirroredSensorEntity(SensorEntity):
         self._attr_icon = state.attributes.get("icon")
 
 
+def _decode_ipv6_addresses(interfaces) -> list[str]:
+    addresses = []
+    for iface in interfaces or []:
+        for b64_addr in iface.get("6", []):
+            try:
+                addresses.append(str(ipaddress.IPv6Address(base64.b64decode(b64_addr))))
+            except (ValueError, TypeError):
+                continue
+    return addresses
+
+
+async def async_resolve_device_ipv6(node_id: int) -> tuple[str | None, list[str]]:
+    """Best-guess primary IPv6 address + full address list for a node.
+
+    Shared by IPv6AddressSensor and anything that needs to reach the
+    firmware's own HTTP REST API directly (e.g. number.py's
+    EffectLengthNumberEntity) — see IPv6AddressSensor's docstring below
+    for the "last non-link-local" heuristic and its caveats.
+    """
+    async with websockets.connect(MATTER_SERVER_URL) as websocket:
+        await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
+        while True:
+            raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+            msg = json.loads(raw)
+            if msg.get("message_id") == "1":
+                break
+
+        for node in msg.get("result", []):
+            if node.get("node_id") != node_id:
+                continue
+            interfaces = node.get("attributes", {}).get("0/51/0")
+            addresses = _decode_ipv6_addresses(interfaces)
+            if not addresses:
+                return None, []
+            routable = [a for a in addresses if not a.startswith("fe80")]
+            return (routable[-1] if routable else addresses[0]), addresses
+
+    return None, []
+
+
 class IPv6AddressSensor(SensorEntity):
     """Shows the device's Thread-assigned IPv6 address(es).
 
@@ -472,47 +512,16 @@ class IPv6AddressSensor(SensorEntity):
     def extra_state_attributes(self):
         return self._attr_extra_state_attributes
 
-    @staticmethod
-    def _decode_addresses(interfaces) -> list[str]:
-        addresses = []
-        for iface in interfaces or []:
-            for b64_addr in iface.get("6", []):
-                try:
-                    addresses.append(str(ipaddress.IPv6Address(base64.b64decode(b64_addr))))
-                except (ValueError, TypeError):
-                    continue
-        return addresses
-
     async def async_update(self) -> None:
         try:
-            async with websockets.connect(MATTER_SERVER_URL) as websocket:
-                await websocket.send(json.dumps({"message_id": "1", "command": "start_listening"}))
-
-                while True:
-                    raw = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                    msg = json.loads(raw)
-                    if msg.get("message_id") == "1":
-                        break
-
-                for node in msg.get("result", []):
-                    if node.get("node_id") != self._node_id:
-                        continue
-                    interfaces = node.get("attributes", {}).get(self._NETWORK_INTERFACES_ATTR)
-                    addresses = self._decode_addresses(interfaces)
-                    if not addresses:
-                        self._available = False
-                        _LOGGER.warning("Node %s: no IPv6 addresses found", self._node_id)
-                        return
-
-                    routable = [a for a in addresses if not a.startswith("fe80")]
-                    self._attr_native_value = routable[-1] if routable else addresses[0]
-                    self._attr_extra_state_attributes = {"all_ipv6_addresses": addresses}
-                    self._available = True
-                    return
-
+            primary, addresses = await async_resolve_device_ipv6(self._node_id)
+            if not addresses:
                 self._available = False
-                _LOGGER.warning("Node %s not found in start_listening response", self._node_id)
-
+                _LOGGER.warning("Node %s: no IPv6 addresses found", self._node_id)
+                return
+            self._attr_native_value = primary
+            self._attr_extra_state_attributes = {"all_ipv6_addresses": addresses}
+            self._available = True
         except websockets.exceptions.WebSocketException as e:
             self._available = False
             _LOGGER.error("Node %s: WebSocket error: %s", self._node_id, e)
