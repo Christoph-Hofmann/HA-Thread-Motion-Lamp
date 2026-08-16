@@ -6,12 +6,14 @@ import logging
 from datetime import timedelta
 from pathlib import Path
 
+import aiohttp
 import websockets
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
@@ -24,7 +26,7 @@ from .const import (
     SCAN_INTERVAL as _SCAN_INTERVAL_SECONDS,
 )
 from .device_link import child_device_info
-from .sensor import _node_id_from_matter_identifier
+from .sensor import _node_id_from_matter_identifier, async_resolve_device_ipv6
 
 SCAN_INTERVAL = timedelta(seconds=_SCAN_INTERVAL_SECONDS)
 
@@ -34,14 +36,13 @@ _ACTIONS: list[dict] = json.loads(
     (Path(__file__).parent / ACTIONS_FILE).read_text(encoding="utf-8")
 )
 
-# The firmware's own effect auto-stop duration (EFFECT_TIMEOUT_DEFAULT_S in
-# app_driver.cpp) — used to time EffectSelectEntity's dropdown reset back to
-# idle. The real value is per-device configurable via a custom HTTP endpoint
-# (POST /config/effect_length) that this integration has no visibility into
-# over Matter/websocket, so this is a best-effort default, not a guarantee:
-# it only affects how promptly the dropdown's displayed value goes stale
-# after the device stops on its own, not the device's actual behavior.
-_EFFECT_LENGTH_ASSUMED_S = 30
+# Fallback only — used to time EffectSelectEntity's dropdown reset back to
+# idle when the real per-device value can't be fetched (device unreachable
+# over HTTP, etc). Normally the actual effect_length_s is read fresh from
+# the device's own /sensors endpoint before each effect (see
+# EffectSelectEntity._fetch_effect_length_s()); this is just what
+# EFFECT_TIMEOUT_DEFAULT_S defaults to in app_driver.cpp.
+_EFFECT_LENGTH_FALLBACK_S = 30
 
 
 async def async_setup_entry(
@@ -107,18 +108,45 @@ class EffectSelectEntity(SelectEntity):
             self._idle_timer_cancel()
             self._idle_timer_cancel = None
 
-    def _schedule_idle_reset(self) -> None:
+    async def _fetch_effect_length_s(self) -> int:
+        """Read the device's actual configured effect length over HTTP.
+
+        effect_length_s is plain NVS-backed app state with no Matter
+        attribute of its own (see EffectLengthNumberEntity in number.py),
+        so this talks straight to the device's IPv6 address rather than
+        matter-server. Falls back to _EFFECT_LENGTH_FALLBACK_S on any
+        failure (device unreachable, HTTP error, ...).
+        """
+        try:
+            ip, _ = await async_resolve_device_ipv6(self._node_id)
+            if ip is None:
+                return _EFFECT_LENGTH_FALLBACK_S
+            session = async_get_clientsession(self.hass)
+            async with session.get(
+                f"http://[{ip}]/sensors", timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                data = await resp.json(content_type=None)
+            return data.get("lamp", {}).get("effect_length_s", _EFFECT_LENGTH_FALLBACK_S)
+        except Exception as e:
+            _LOGGER.warning(
+                "Node %s: could not read effect_length_s, assuming %ds: %s",
+                self._node_id, _EFFECT_LENGTH_FALLBACK_S, e,
+            )
+            return _EFFECT_LENGTH_FALLBACK_S
+
+    async def _schedule_idle_reset(self) -> None:
         """Reflect the device's own auto-stop back into the dropdown.
 
         The device stops the effect on its own after effect_length_s with
         no way for this integration to observe that over Matter/websocket
-        (see _EFFECT_LENGTH_ASSUMED_S above) — without this, the dropdown
-        would keep showing the last-sent effect forever after it actually
-        stopped, which also breaks re-selecting the same effect a second
-        time (see the async_select_option Idle branch for why a same-value
-        selection doesn't fire at all).
+        — without this, the dropdown would keep showing the last-sent
+        effect forever after it actually stopped, which also breaks
+        re-selecting the same effect a second time (see the
+        async_select_option Idle branch for why a same-value selection
+        doesn't fire at all).
         """
         self._cancel_idle_timer()
+        delay_s = await self._fetch_effect_length_s()
 
         @callback
         def _reset(_now):
@@ -126,7 +154,7 @@ class EffectSelectEntity(SelectEntity):
             self._current = self._IDLE
             self.async_write_ha_state()
 
-        self._idle_timer_cancel = async_call_later(self.hass, _EFFECT_LENGTH_ASSUMED_S, _reset)
+        self._idle_timer_cancel = async_call_later(self.hass, delay_s, _reset)
 
     async def async_will_remove_from_hass(self) -> None:
         self._cancel_idle_timer()
@@ -174,6 +202,7 @@ class EffectSelectEntity(SelectEntity):
         self._current = option
         self.async_write_ha_state()
 
+        sent = False
         try:
             async with websockets.connect(MATTER_SERVER_URL) as websocket:
                 command = {
@@ -202,11 +231,18 @@ class EffectSelectEntity(SelectEntity):
                     if response.get("message_id") == "1":
                         break
                 _LOGGER.debug("Node %s: effect response: %s", self._node_id, response)
-                self._schedule_idle_reset()
+                sent = True
         except Exception as e:
             _LOGGER.error("Node %s: error sending effect '%s': %s", self._node_id, option, e)
             self._current = self._IDLE
             self.async_write_ha_state()
+            return
+
+        if sent:
+            # Outside the matter-server connection above — this does its
+            # own HTTP + websocket calls to resolve the device's IPv6
+            # address, no need to hold that connection open for it.
+            await self._schedule_idle_reset()
 
 
 class AnimationSelectEntity(SelectEntity):
