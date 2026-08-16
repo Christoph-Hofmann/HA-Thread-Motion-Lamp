@@ -10,11 +10,11 @@ import websockets
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 
 from .const import (
     ACTIONS_FILE,
@@ -33,6 +33,15 @@ _LOGGER = logging.getLogger(__name__)
 _ACTIONS: list[dict] = json.loads(
     (Path(__file__).parent / ACTIONS_FILE).read_text(encoding="utf-8")
 )
+
+# The firmware's own effect auto-stop duration (EFFECT_TIMEOUT_DEFAULT_S in
+# app_driver.cpp) — used to time EffectSelectEntity's dropdown reset back to
+# idle. The real value is per-device configurable via a custom HTTP endpoint
+# (POST /config/effect_length) that this integration has no visibility into
+# over Matter/websocket, so this is a best-effort default, not a guarantee:
+# it only affects how promptly the dropdown's displayed value goes stale
+# after the device stops on its own, not the device's actual behavior.
+_EFFECT_LENGTH_ASSUMED_S = 30
 
 
 async def async_setup_entry(
@@ -87,12 +96,43 @@ class EffectSelectEntity(SelectEntity):
         self._attr_device_info = device_info
         self._attr_options = [self._IDLE] + [a["name"] for a in _ACTIONS]
         self._current = self._IDLE
+        self._idle_timer_cancel = None
 
     @property
     def current_option(self) -> str:
         return self._current
 
+    def _cancel_idle_timer(self) -> None:
+        if self._idle_timer_cancel is not None:
+            self._idle_timer_cancel()
+            self._idle_timer_cancel = None
+
+    def _schedule_idle_reset(self) -> None:
+        """Reflect the device's own auto-stop back into the dropdown.
+
+        The device stops the effect on its own after effect_length_s with
+        no way for this integration to observe that over Matter/websocket
+        (see _EFFECT_LENGTH_ASSUMED_S above) — without this, the dropdown
+        would keep showing the last-sent effect forever after it actually
+        stopped, which also breaks re-selecting the same effect a second
+        time (see the async_select_option Idle branch for why a same-value
+        selection doesn't fire at all).
+        """
+        self._cancel_idle_timer()
+
+        @callback
+        def _reset(_now):
+            self._idle_timer_cancel = None
+            self._current = self._IDLE
+            self.async_write_ha_state()
+
+        self._idle_timer_cancel = async_call_later(self.hass, _EFFECT_LENGTH_ASSUMED_S, _reset)
+
+    async def async_will_remove_from_hass(self) -> None:
+        self._cancel_idle_timer()
+
     async def async_select_option(self, option: str) -> None:
+        self._cancel_idle_timer()
         if option == self._IDLE:
             # StopEffect (0xFF) — a real spec-defined Identify effect
             # identifier, not a made-up sentinel — tells the firmware to
@@ -162,6 +202,7 @@ class EffectSelectEntity(SelectEntity):
                     if response.get("message_id") == "1":
                         break
                 _LOGGER.debug("Node %s: effect response: %s", self._node_id, response)
+                self._schedule_idle_reset()
         except Exception as e:
             _LOGGER.error("Node %s: error sending effect '%s': %s", self._node_id, option, e)
             self._current = self._IDLE
