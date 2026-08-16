@@ -134,9 +134,9 @@ async def async_setup_entry(
 
         device_info = child_device_info(device)
         entities.append(MatterUptimeSensor(node_id, device_info))
-        entities.append(MirroredSensorEntity(hass, device.id, "pressure", node_id, device_info))
-        entities.append(MirroredSensorEntity(hass, device.id, "humidity", node_id, device_info))
-        entities.append(MirroredSensorEntity(hass, device.id, "temperature", node_id, device_info))
+        for device_class in ("pressure", "humidity", "temperature"):
+            if _find_matching_sensor(hass, device.id, device_class):
+                entities.append(MirroredSensorEntity(hass, device.id, device_class, node_id, device_info))
         entities.append(IPv6AddressSensor(node_id, device_info))
         ld2410_candidates.append((node_id, device_info))
 
@@ -307,6 +307,23 @@ class LD2410ValueSensor(SensorEntity):
             _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
 
 
+def _find_matching_sensor(hass: HomeAssistant, matter_device_id: str, device_class: str) -> str | None:
+    """Entity ID of a sensor on the given (HA-core Matter) device with the
+    given device_class, if any — e.g. whether a node actually has a
+    RelativeHumidity cluster, by way of core Matter having created a
+    sensor entity for it. Shared by MirroredSensorEntity's own re-resolve
+    and async_setup_entry's existence check below."""
+    registry = er.async_get(hass)
+    for entry in registry.entities.values():
+        if entry.device_id != matter_device_id or entry.domain != "sensor":
+            continue
+        state = hass.states.get(entry.entity_id)
+        dc = (state.attributes.get("device_class") if state else None) or entry.original_device_class
+        if dc == device_class:
+            return entry.entity_id
+    return None
+
+
 class MirroredSensorEntity(SensorEntity):
     """Mirrors one HA-core Matter sensor entity onto this integration's child device.
 
@@ -321,6 +338,11 @@ class MirroredSensorEntity(SensorEntity):
     own child device — the source entity lives on the other one), and
     re-resolved on entity-registry changes since HA-core's own sensor
     might not exist yet the moment this integration's platform loads.
+
+    Only ever instantiated for a device_class confirmed present at setup
+    time (see async_setup_entry) — a node with no RelativeHumidity
+    cluster, say, never gets a Humidity entity at all instead of one that
+    sits permanently "unavailable".
     """
 
     _attr_should_poll = False
@@ -353,15 +375,7 @@ class MirroredSensorEntity(SensorEntity):
         return self._available
 
     def _find_source_entity(self) -> str | None:
-        registry = er.async_get(self._hass)
-        for entry in registry.entities.values():
-            if entry.device_id != self._matter_device_id or entry.domain != "sensor":
-                continue
-            state = self._hass.states.get(entry.entity_id)
-            dc = (state.attributes.get("device_class") if state else None) or entry.original_device_class
-            if dc == self._device_class:
-                return entry.entity_id
-        return None
+        return _find_matching_sensor(self._hass, self._matter_device_id, self._device_class)
 
     def _resubscribe(self) -> None:
         if self._unsub_state_change:
