@@ -164,7 +164,6 @@ class EffectSelectEntity(SelectEntity):
                 _LOGGER.debug("Node %s: effect response: %s", self._node_id, response)
         except Exception as e:
             _LOGGER.error("Node %s: error sending effect '%s': %s", self._node_id, option, e)
-        finally:
             self._current = self._IDLE
             self.async_write_ha_state()
 
