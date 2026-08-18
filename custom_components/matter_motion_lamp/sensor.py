@@ -7,12 +7,15 @@ import json
 import logging
 from datetime import timedelta
 
+import aiohttp
 import websockets
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
@@ -138,6 +141,7 @@ async def async_setup_entry(
             if _find_matching_sensor(hass, device.id, device_class):
                 entities.append(MirroredSensorEntity(hass, device.id, device_class, node_id, device_info))
         entities.append(IPv6AddressSensor(node_id, device_info))
+        entities.append(InternalTempSensor(hass, node_id, device_info))
         ld2410_candidates.append((node_id, device_info))
 
     if ld2410_candidates:
@@ -545,3 +549,67 @@ class IPv6AddressSensor(SensorEntity):
         except json.JSONDecodeError as e:
             self._available = False
             _LOGGER.error("Node %s: JSON parse error: %s", self._node_id, e)
+
+
+class InternalTempSensor(SensorEntity):
+    """The ESP32-C6's own on-die temperature sensor.
+
+    Chip/board temperature, not room ambient — self-heating from the
+    SoC/PWM/RF skews it well above the real environment reading (see the
+    Pressure/Humidity/Temperature mirrors above for that). Diagnostic
+    category for that reason, same as e.g. a router's internal CPU temp.
+
+    Like EffectLengthNumberEntity (number.py), this is plain firmware
+    state with no Matter attribute of its own — reached directly over
+    the device's IPv6 address via GET /sensors rather than matter-server.
+    Devices on firmware older than the internal-temp-sensor feature just
+    won't have a "system" key in that response, so this goes unavailable
+    rather than erroring — no separate version check needed.
+    """
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:chip"
+
+    def __init__(self, hass: HomeAssistant, node_id: int, device_info: DeviceInfo) -> None:
+        self._hass = hass
+        self._node_id = node_id
+        self._attr_unique_id = f"matter_internal_temp_{node_id}"
+        self._attr_name = "Internal Temperature"
+        self._attr_device_info = device_info
+        self._attr_native_value = None
+        self._available = False
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def available(self):
+        return self._available
+
+    async def async_update(self) -> None:
+        try:
+            ip, _ = await async_resolve_device_ipv6(self._node_id)
+            if ip is None:
+                self._available = False
+                _LOGGER.warning("Node %s: no IPv6 address to reach HTTP API", self._node_id)
+                return
+
+            session = async_get_clientsession(self._hass)
+            async with session.get(
+                f"http://[{ip}]/sensors", timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                data = await resp.json(content_type=None)
+
+            value = data.get("system", {}).get("internal_temp_c")
+            if value is None:
+                self._available = False
+                _LOGGER.debug("Node %s: no internal_temp_c in /sensors (older firmware?)", self._node_id)
+                return
+            self._attr_native_value = value
+            self._available = True
+        except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
+            self._available = False
+            _LOGGER.error("Node %s: error reading internal temp over HTTP: %s", self._node_id, e)
