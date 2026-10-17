@@ -81,29 +81,37 @@ def download(update_server_url: str, filename: str, dest: Path) -> bool:
     return True
 
 
-def restart_matter_server(slug: str) -> None:
+def restart_matter_server(slug: str) -> bool:
+    """Returns whether the restart was confirmed to succeed.
+
+    A timeout is treated as failure even though the restart may have gone
+    through anyway (Supervisor doesn't respond until the whole stop/cleanup/
+    start cycle finishes, which can exceed a normal HTTP timeout) — the
+    caller uses this to decide whether to keep retrying, and a redundant
+    extra restart next cycle is harmless, unlike silently giving up.
+    """
     if not SUPERVISOR_TOKEN:
         log.error("No SUPERVISOR_TOKEN available, cannot restart %s", slug)
-        return
+        return False
     req = urllib.request.Request(
         f"http://supervisor/addons/{slug}/restart",
         method="POST",
         headers={"Authorization": f"Bearer {SUPERVISOR_TOKEN}"},
     )
-    # Supervisor doesn't respond until the whole stop/cleanup/start cycle
-    # finishes, which can comfortably exceed a normal HTTP timeout — a
-    # client-side timeout here doesn't mean the restart failed, just that
-    # we stopped waiting for its confirmation.
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             log.info("Restart requested for %s (status %s)", slug, resp.status)
+            return True
     except TimeoutError:
         log.warning(
             "Restart request for %s timed out waiting for a response; "
-            "the restart itself may still have completed.", slug,
+            "the restart itself may still have completed, but treating it "
+            "as unconfirmed so the next check retries.", slug,
         )
+        return False
     except (urllib.error.URLError, OSError) as e:
         log.error("Failed to restart %s: %s", slug, e)
+        return False
 
 
 def run_check(options: dict) -> None:
@@ -124,6 +132,7 @@ def run_check(options: dict) -> None:
         return
 
     pushed = load_state()
+    newly_downloaded = set()
     new_ota_pushed = False
 
     for filename in filenames:
@@ -133,17 +142,35 @@ def run_check(options: dict) -> None:
         dest = target_dir / name
         if not download(update_server_url, name, dest):
             continue
-        pushed.add(name)
+        newly_downloaded.add(name)
         if name.lower().endswith(".ota"):
             new_ota_pushed = True
 
-    save_state(pushed)
+    if not newly_downloaded:
+        log.info("No new firmware found.")
+        return
 
     if new_ota_pushed:
-        log.info("New firmware pushed - restarting %s", matter_slug)
-        restart_matter_server(matter_slug)
+        # Only commit these filenames to persisted state once the restart is
+        # confirmed — otherwise Matter Server never actually sees the new
+        # .ota file(s), but we'd still skip them as "already pushed" on
+        # every future check (this previously caused a push to be silently
+        # lost for good whenever the restart happened to fail, e.g. because
+        # Matter Server/Supervisor wasn't back up yet after a host reboot).
+        log.info("New firmware downloaded - restarting %s", matter_slug)
+        if restart_matter_server(matter_slug):
+            pushed.update(newly_downloaded)
+            save_state(pushed)
+        else:
+            log.warning(
+                "Restart not confirmed - not marking %s as pushed; will retry next check.",
+                sorted(newly_downloaded),
+            )
     else:
-        log.info("No new firmware found.")
+        # Only .json notes were new — nothing Matter Server needs a restart
+        # for, so there's nothing to hold back.
+        pushed.update(newly_downloaded)
+        save_state(pushed)
 
 
 def main() -> None:
