@@ -1,5 +1,5 @@
 name: MotionLamp OTA Bridge
-version: "1.0.0"
+version: "1.0.1"
 slug: motionlamp_ota_bridge
 description: Pulls MotionLamp firmware updates into the Matter Server add-on's OTA provider directory and restarts it when new versions are found.
 url: https://github.com/Christoph-Hofmann/HA-Thread-Motion-Lamp
